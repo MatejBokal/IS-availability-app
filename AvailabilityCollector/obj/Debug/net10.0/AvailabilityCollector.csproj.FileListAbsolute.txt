@@ -1,0 +1,9 @@
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.csproj.AssemblyReference.cache
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\rpswa.dswa.cache.json
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.AssemblyInfoInputs.cache
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.AssemblyInfo.cs
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.csproj.CoreCompileInputs.cache
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.RazorAssemblyInfo.cache
+C:\Users\matej\Documents\FRI\2025-2026\3-1\IS\seminar\availability-app\AvailabilityCollector\obj\Debug\net10.0\AvailabilityCollector.RazorAssemblyInfo.cs
