@@ -1,4 +1,12 @@
+using AvailabilityCollector.Data;
+using Microsoft.EntityFrameworkCore;
+
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<AppContextDb>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("AppContext")));
+
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();

@@ -38,12 +38,132 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSG9tZVxQcml2YWN5LmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Matrice/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTWF0cmljZVxDcmVhdGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Matrice/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTWF0cmljZVxEZWxldGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Matrice/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTWF0cmljZVxEZXRhaWxzLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Matrice/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTWF0cmljZVxFZGl0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Matrice/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTWF0cmljZVxJbmRleC5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Razpolozljivosti/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmF6cG9sb3psaml2b3N0aVxDcmVhdGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Razpolozljivosti/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmF6cG9sb3psaml2b3N0aVxEZWxldGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Razpolozljivosti/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmF6cG9sb3psaml2b3N0aVxEZXRhaWxzLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Razpolozljivosti/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmF6cG9sb3psaml2b3N0aVxFZGl0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Razpolozljivosti/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmF6cG9sb3psaml2b3N0aVxJbmRleC5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Shared/Error.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2hhcmVkXEVycm9yLmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Shared/_ValidationScriptsPartial.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2hhcmVkXF9WYWxpZGF0aW9uU2NyaXB0c1BhcnRpYWwuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Statusi/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU3RhdHVzaVxDcmVhdGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Statusi/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU3RhdHVzaVxEZWxldGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Statusi/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU3RhdHVzaVxEZXRhaWxzLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Statusi/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU3RhdHVzaVxFZGl0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Statusi/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU3RhdHVzaVxJbmRleC5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiKoncni/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpS29uY25pXENyZWF0ZS5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiKoncni/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpS29uY25pXERlbGV0ZS5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiKoncni/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpS29uY25pXERldGFpbHMuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiKoncni/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpS29uY25pXEVkaXQuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiKoncni/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpS29uY25pXEluZGV4LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiRazpolozljivosti/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpUmF6cG9sb3psaml2b3N0aVxDcmVhdGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiRazpolozljivosti/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpUmF6cG9sb3psaml2b3N0aVxEZWxldGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiRazpolozljivosti/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpUmF6cG9sb3psaml2b3N0aVxEZXRhaWxzLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiRazpolozljivosti/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpUmF6cG9sb3psaml2b3N0aVxFZGl0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/UrnikiRazpolozljivosti/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcVXJuaWtpUmF6cG9sb3psaml2b3N0aVxJbmRleC5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Workers/Create.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcV29ya2Vyc1xDcmVhdGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Workers/Delete.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcV29ya2Vyc1xEZWxldGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Workers/Details.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcV29ya2Vyc1xEZXRhaWxzLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Workers/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcV29ya2Vyc1xFZGl0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/Workers/Index.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcV29ya2Vyc1xJbmRleC5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/matej/Documents/FRI/2025-2026/3-1/IS/seminar/availability-app/AvailabilityCollector/Views/_ViewImports.cshtml]
