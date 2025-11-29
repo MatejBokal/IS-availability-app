@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using AvailabilityCollector.Data;
 using AvailabilityCollector.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AvailabilityCollector.Controllers
 {
+    [Authorize(Roles = "Administrator")]
     public class WorkersController : Controller
     {
         private readonly AppContextDb _context;

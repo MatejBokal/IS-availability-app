@@ -1,11 +1,31 @@
 using AvailabilityCollector.Data;
 using Microsoft.EntityFrameworkCore;
 
+using Microsoft.AspNetCore.Identity;
+using AvailabilityCollector.Models;
+using AvailabilityCollector.Data;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<AppContextDb>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("AppContext")));
+
+var connectionString = builder.Configuration.GetConnectionString("AppContext");
+
+builder.Services.AddDbContext<AppIdentityContext>(options =>
+    options.UseSqlServer(connectionString));
+
+builder.Services.AddDbContext<AppContextDb>(options =>
+    options.UseSqlServer(connectionString));
+
+builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
+{
+    options.SignIn.RequireConfirmedAccount = false;
+})
+.AddRoles<IdentityRole>()
+.AddEntityFrameworkStores<AppIdentityContext>();
 
 
 // Add services to the container.
@@ -33,5 +53,6 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
+app.MapRazorPages();
 
 app.Run();
