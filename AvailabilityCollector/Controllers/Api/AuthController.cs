@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using AvailabilityCollector.Models;
 
 namespace AvailabilityCollector.Controllers.Api;
 
@@ -11,13 +12,13 @@ namespace AvailabilityCollector.Controllers.Api;
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly UserManager<IdentityUser> _userManager;
-    private readonly SignInManager<IdentityUser> _signInManager;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IConfiguration _config;
 
     public AuthController(
-        UserManager<IdentityUser> userManager,
-        SignInManager<IdentityUser> signInManager,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
         IConfiguration config)
     {
         _userManager = userManager;
@@ -32,7 +33,7 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest req)
     {
-        var user = new IdentityUser
+        var user = new ApplicationUser
         {
             UserName = req.Email,
             Email = req.Email
@@ -64,7 +65,7 @@ public class AuthController : ControllerBase
         return Ok(token);
     }
 
-    private AuthResponse CreateJwt(IdentityUser user, IEnumerable<string> roles)
+    private AuthResponse CreateJwt(ApplicationUser user, IEnumerable<string> roles)
     {
         var jwt = _config.GetSection("Jwt");
         var issuer = jwt["Issuer"];

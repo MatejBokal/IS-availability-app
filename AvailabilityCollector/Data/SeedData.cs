@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using AvailabilityCollector.Models;
 
 namespace AvailabilityCollector.Data;
 
@@ -8,7 +9,7 @@ public static class SeedData
     {
         using var scope = services.CreateScope();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
         string[] roles = new[] { "Admin", "Worker" };
         foreach (var r in roles)
@@ -24,7 +25,7 @@ public static class SeedData
         var admin = await userManager.FindByEmailAsync(adminEmail);
         if (admin == null)
         {
-            admin = new IdentityUser { UserName = adminEmail, Email = adminEmail, EmailConfirmed = true };
+            admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, EmailConfirmed = true };
             var res = await userManager.CreateAsync(admin, adminPass);
             if (res.Succeeded)
                 await userManager.AddToRoleAsync(admin, "Admin");

@@ -5,7 +5,7 @@ using AvailabilityCollector.Models;
 
 namespace AvailabilityCollector.Data;
 
-public class ApplicationDbContext : IdentityDbContext<IdentityUser>
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
@@ -31,7 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<IdentityUser>
             .IsUnique();
 
         modelBuilder.Entity<AvailabilitySubmission>()
-            .HasOne<IdentityUser>()
+            .HasOne<ApplicationUser>()
             .WithMany()
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
