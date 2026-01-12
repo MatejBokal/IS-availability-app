@@ -5,6 +5,22 @@ Follow all steps **exactly** to ensure the app works the same way on every machi
 
 ---
 
+# 🚀 Quick Setup (Recommended)
+
+Run the automated setup script:
+
+```powershell
+.\setup.ps1
+```
+
+This will automatically:
+- Check prerequisites (Docker, .NET SDK)
+- Start SQL Server in Docker
+- Restore dependencies
+- Apply all EF migrations
+
+---
+
 # ✅ 1. Requirements
 
 Make sure you have:
