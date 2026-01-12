@@ -26,6 +26,17 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 // Controllers and Views
 builder.Services.AddControllers();
 builder.Services.AddControllersWithViews();
+
+// Add CORS for Android app
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 builder.Services.AddRazorPages();
 
 // JWT configuration
@@ -100,6 +111,9 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+// Enable CORS for Android app
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();

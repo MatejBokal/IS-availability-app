@@ -1,0 +1,11 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# Optional: Android/Gradle build output (recommended)
+**/.gradle/
+**/build/
