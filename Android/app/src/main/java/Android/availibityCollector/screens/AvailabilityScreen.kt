@@ -1,5 +1,6 @@
 package Android.availibityCollector.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,29 +18,100 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import Android.availibityCollector.ui.theme.MyApplicationTheme
+import Android.availibityCollector.data.api.VolleyClient
+import com.google.gson.Gson
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.util.*
 
+/**
+ * AvailabilityScreen - CREATE operation using Volley
+ * Workers can submit their availability for scheduling
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AvailabilityScreen(
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val volleyClient = remember { VolleyClient.getInstance(context) }
+    val gson = remember { Gson() }
+    
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
-    var availabilityType by remember { mutableStateOf("weekly") } // "weekly" or "monthly"
+    // Allow multiple date selection
+    var selectedDates by remember { mutableStateOf(setOf<LocalDate>()) }
+    var isSaving by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
     
     // Track availability for each day (simplified: 0 = not set, 1 = available, 2 = not available, 3 = partial)
     val availability = remember { mutableStateMapOf<LocalDate, Int>() }
+    
+    // Track custom time range for partial availability (per date) - stores "startTime - endTime"
+    val timeSlots = remember { mutableStateMapOf<LocalDate, MutableSet<String>>() }
+    
+    // State for custom time input
+    var customStartTime by remember { mutableStateOf("") }
+    var customEndTime by remember { mutableStateOf("") }
+    
+    // Load existing availability on screen open
+    LaunchedEffect(Unit) {
+        volleyClient.getRazpolozljivostByWorker(
+            workerId = 1, // TODO: Get from logged-in user
+            onSuccess = { razpolozljivosti ->
+                // Parse saved availability and populate the calendar
+                razpolozljivosti.forEach { razpolozljivost ->
+                    try {
+                        // Parse the JSON containing date -> status mappings
+                        val typeToken = object : com.google.gson.reflect.TypeToken<Map<String, Map<String, Any>>>() {}.type
+                        val savedData: Map<String, Map<String, Any>> = gson.fromJson(razpolozljivost.razpolozljivostJSON, typeToken)
+                        
+                        savedData.forEach { (dateStr, data) ->
+                            val date = LocalDate.parse(dateStr)
+                            val status = (data["status"] as? Double)?.toInt() ?: 0
+                            availability[date] = status
+                            
+                            // Also load time slots if available
+                            @Suppress("UNCHECKED_CAST")
+                            val slots = data["timeSlots"] as? List<String>
+                            if (!slots.isNullOrEmpty()) {
+                                timeSlots[date] = slots.toMutableSet()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Ignore parsing errors for individual entries
+                    }
+                }
+                isLoading = false
+            },
+            onError = { _ ->
+                // If loading fails, just continue with empty availability
+                isLoading = false
+            }
+        )
+    }
+    
+    // Helper function to apply availability to all selected days
+    fun applyToSelectedDays(status: Int) {
+        selectedDates.forEach { date ->
+            availability[date] = status
+        }
+    }
+    
+    // Helper function to apply custom time range to all selected days
+    fun applyCustomTimeToSelectedDays(startTime: String, endTime: String) {
+        if (startTime.isNotBlank() && endTime.isNotBlank()) {
+            val timeRange = "$startTime - $endTime"
+            selectedDates.forEach { date ->
+                timeSlots[date] = mutableSetOf(timeRange)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -56,41 +128,29 @@ fun AvailabilityScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-        ) {
-            // Type selector
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+        if (isLoading) {
+            // Show loading indicator while fetching existing availability
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        FilterChip(
-                            selected = availabilityType == "weekly",
-                            onClick = { availabilityType = "weekly" },
-                            label = { Text("Tedenski") }
-                        )
-                        FilterChip(
-                            selected = availabilityType == "monthly",
-                            onClick = { availabilityType = "monthly" },
-                            label = { Text("Mesečni") }
-                        )
-                    }
+                    CircularProgressIndicator()
+                    Text("Nalagam razpoložljivost...")
                 }
-                
-                Spacer(modifier = Modifier.height(16.dp))
             }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp)
+            ) {
             
             // Month navigation
             item {
@@ -142,35 +202,80 @@ fun AvailabilityScreen(
             item {
                 CalendarGrid(
                     yearMonth = currentMonth,
-                    selectedDate = selectedDate,
+                    selectedDates = selectedDates,
                     availability = availability,
                     onDateClick = { date ->
-                        selectedDate = date
+                        // Toggle selection on click
+                        selectedDates = if (selectedDates.contains(date)) {
+                            selectedDates - date
+                        } else {
+                            selectedDates + date
+                        }
                     }
                 )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Show selected count and clear button
+                if (selectedDates.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Izbrano: ${selectedDates.size} dni",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                        TextButton(onClick = { selectedDates = emptySet() }) {
+                            Text("Počisti izbor")
+                        }
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
             }
             
-            // Selected date details
+            // Availability controls for selected dates
             item {
-                selectedDate?.let { date ->
+                if (selectedDates.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp)
                         ) {
+                            // Show which dates are selected
+                            val sortedDates = selectedDates.sorted()
+                            val displayText = if (sortedDates.size == 1) {
+                                sortedDates[0].format(DateTimeFormatter.ofPattern("EEEE, d. MMMM", Locale("sl")))
+                            } else {
+                                "${sortedDates.size} izbranih dni"
+                            }
+                            
                             Text(
-                                text = date.format(DateTimeFormatter.ofPattern("EEEE, d. MMMM yyyy", Locale("sl"))),
+                                text = displayText,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
                             
+                            if (sortedDates.size > 1) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = sortedDates.take(5).joinToString(", ") { 
+                                        it.format(DateTimeFormatter.ofPattern("d. MMM", Locale("sl"))) 
+                                    } + if (sortedDates.size > 5) ", ..." else "",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            
                             Spacer(modifier = Modifier.height(12.dp))
                             
                             Text(
-                                text = "Označi razpoložljivost:",
+                                text = "Označi razpoložljivost za izbrane dni:",
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -184,41 +289,91 @@ fun AvailabilityScreen(
                                 AvailabilityButton(
                                     text = "Na voljo",
                                     color = Color(0xFF4CAF50),
-                                    selected = availability[date] == 1,
-                                    onClick = { availability[date] = 1 },
+                                    selected = false,
+                                    onClick = { 
+                                        applyToSelectedDays(1)
+                                        selectedDates = emptySet()
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 AvailabilityButton(
                                     text = "Delno",
                                     color = Color(0xFFFF9800),
-                                    selected = availability[date] == 3,
-                                    onClick = { availability[date] = 3 },
+                                    selected = false,
+                                    onClick = { 
+                                        applyToSelectedDays(3)
+                                        // Don't clear selection - user needs to enter time first
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 AvailabilityButton(
                                     text = "Ni na voljo",
                                     color = Color(0xFFF44336),
-                                    selected = availability[date] == 2,
-                                    onClick = { availability[date] = 2 },
+                                    selected = false,
+                                    onClick = { 
+                                        applyToSelectedDays(2)
+                                        selectedDates = emptySet()
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
                             
-                            // Time slots for partial availability
-                            if (availability[date] == 3) {
+                            // Time input for partial availability (shown if any selected date has partial)
+                            val anyPartial = selectedDates.any { availability[it] == 3 }
+                            if (anyPartial) {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "Izberite ure:",
+                                    text = "Vnesite čas (npr. 8:00, 14:30):",
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                // Time slot selector would go here
-                                Text(
-                                    text = "8:00 - 12:00, 14:00 - 18:00",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = customStartTime,
+                                        onValueChange = { customStartTime = it },
+                                        label = { Text("Od", fontSize = 12.sp) },
+                                        placeholder = { Text("8:00", fontSize = 12.sp) },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                    Text(
+                                        text = "–",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    OutlinedTextField(
+                                        value = customEndTime,
+                                        onValueChange = { customEndTime = it },
+                                        label = { Text("Do", fontSize = 12.sp) },
+                                        placeholder = { Text("15:00", fontSize = 12.sp) },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Button(
+                                    onClick = {
+                                        applyCustomTimeToSelectedDays(customStartTime, customEndTime)
+                                        selectedDates = emptySet()
+                                        customStartTime = ""
+                                        customEndTime = ""
+                                    },
+                                    enabled = customStartTime.isNotBlank() && customEndTime.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFF9800)
+                                    )
+                                ) {
+                                    Text("Potrdi čas")
+                                }
                             }
                         }
                     }
@@ -260,29 +415,85 @@ fun AvailabilityScreen(
             item {
                 Button(
                     onClick = {
-                        // TODO: Submit availability to API
+                        // CREATE operation - Save availability using Volley
+                        if (availability.isNotEmpty()) {
+                            isSaving = true
+                            
+                            // Convert availability map to JSON (including time slots for partial days)
+                            val availabilityData = availability.map { (date, status) ->
+                                val dateStr = date.toString()
+                                val slots = if (status == 3) timeSlots[date]?.toList() ?: emptyList() else emptyList()
+                                dateStr to mapOf(
+                                    "status" to status,
+                                    "timeSlots" to slots
+                                )
+                            }.toMap()
+                            val razpolozljivostJSON = gson.toJson(availabilityData)
+                            val mesecLeto = currentMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+                            
+                            // For demo purposes, using workerId = 1
+                            // In real app, this would come from logged-in user
+                            volleyClient.createRazpolozljivost(
+                                workerId = 1,
+                                razpolozljivostJSON = razpolozljivostJSON,
+                                mesecLeto = mesecLeto,
+                                type = "monthly",
+                                zaporedniTeden = null,
+                                onSuccess = { _ ->
+                                    isSaving = false
+                                    Toast.makeText(
+                                        context, 
+                                        "Razpoložljivost uspešno shranjena!", 
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onError = { error ->
+                                    isSaving = false
+                                    Toast.makeText(
+                                        context, 
+                                        "Napaka: $error", 
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        } else {
+                            Toast.makeText(
+                                context, 
+                                "Označite vsaj en dan", 
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .height(50.dp),
+                    enabled = !isSaving && availability.isNotEmpty()
                 ) {
-                    Text(
-                        text = "Shrani razpoložljivost",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(
+                            text = "Shrani razpoložljivost",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
+        } // end else (isLoading)
     }
 }
 
 @Composable
 private fun CalendarGrid(
     yearMonth: YearMonth,
-    selectedDate: LocalDate?,
+    selectedDates: Set<LocalDate>,
     availability: Map<LocalDate, Int>,
     onDateClick: (LocalDate) -> Unit
 ) {
@@ -306,7 +517,7 @@ private fun CalendarGrid(
                     
                     if (dayOfMonth in 1..daysInMonth) {
                         val date = yearMonth.atDay(dayOfMonth)
-                        val isSelected = date == selectedDate
+                        val isSelected = selectedDates.contains(date)
                         val availabilityStatus = availability[date] ?: 0
                         
                         val backgroundColor = when (availabilityStatus) {
@@ -384,13 +595,5 @@ private fun LegendItem(color: Color, text: String) {
                 .background(color, MaterialTheme.shapes.small)
         )
         Text(text = text, fontSize = 12.sp)
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun AvailabilityScreenPreview() {
-    MyApplicationTheme {
-        AvailabilityScreen(onBackClick = {})
     }
 }
