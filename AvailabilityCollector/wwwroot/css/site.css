@@ -29,3 +29,20 @@ body {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
   text-align: start;
 }
+
+/* Fix dropdown menu clipping in table-responsive containers */
+.table-responsive {
+  overflow-x: auto;
+  /* Temporarily allow vertical overflow when dropdown is open */
+  overflow-y: visible;
+}
+
+/* When dropdown is shown, allow overflow */
+.table-responsive:has(.dropdown-menu.show) {
+  overflow-y: visible !important;
+}
+
+/* Ensure dropdowns have high z-index */
+.table-responsive .dropdown-menu {
+  z-index: 1050 !important;
+}
