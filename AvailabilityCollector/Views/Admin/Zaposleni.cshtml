@@ -376,24 +376,54 @@
             new bootstrap.Modal(document.getElementById('employeeModal')).show();
         }
         
-        function addNewPosition(selectId) {
+        async function addNewPosition(selectId) {
             const select = document.getElementById(selectId);
             const newPosition = prompt('Vnesite ime nove pozicije:');
             if (newPosition && newPosition.trim()) {
-                // Add to both position dropdowns
-                const primarySelect = document.getElementById('employeePosition');
-                const secondarySelect = document.getElementById('employeeSecondaryPositions');
-                
-                const option1 = document.createElement('option');
-                option1.value = newPosition.trim();
-                option1.textContent = newPosition.trim();
-                option1.selected = true;
-                primarySelect.appendChild(option1);
-                
-                const option2 = document.createElement('option');
-                option2.value = newPosition.trim();
-                option2.textContent = newPosition.trim();
-                secondarySelect.appendChild(option2);
+                // Save position to database first
+                try {
+                    const response = await fetch('/admin/add-position', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ name: newPosition.trim() })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        // Add to both position dropdowns
+                        const primarySelect = document.getElementById('employeePosition');
+                        const secondarySelect = document.getElementById('employeeSecondaryPositions');
+                        
+                        const positionName = result.positionName || newPosition.trim();
+                        
+                        // Check if option already exists
+                        const existingOption1 = Array.from(primarySelect.options).find(opt => opt.value === positionName);
+                        if (!existingOption1) {
+                            const option1 = document.createElement('option');
+                            option1.value = positionName;
+                            option1.textContent = positionName;
+                            option1.selected = true;
+                            primarySelect.appendChild(option1);
+                        } else {
+                            existingOption1.selected = true;
+                        }
+                        
+                        const existingOption2 = Array.from(secondarySelect.options).find(opt => opt.value === positionName);
+                        if (!existingOption2) {
+                            const option2 = document.createElement('option');
+                            option2.value = positionName;
+                            option2.textContent = positionName;
+                            secondarySelect.appendChild(option2);
+                        }
+                    } else {
+                        alert('Napaka pri dodajanju pozicije: ' + (result.error || 'Neznana napaka'));
+                    }
+                } catch (error) {
+                    console.error('Error adding position:', error);
+                    alert('Napaka pri dodajanju pozicije. Poskusite znova.');
+                }
             }
         }
         

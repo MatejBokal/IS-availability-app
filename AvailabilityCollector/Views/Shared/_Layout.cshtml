@@ -45,7 +45,13 @@
             </div>
         </nav>
     </header>
-    <div class="container">
+    @{
+        // Use custom container for Availability page, container for others
+        var isAvailabilityPage = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin" 
+            && ViewContext.RouteData.Values["action"]?.ToString() == "Availability";
+        var containerClass = isAvailabilityPage ? "container-availability" : "container";
+    }
+    <div class="@containerClass">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
@@ -53,7 +59,7 @@
 
     <footer class="border-top footer text-muted">
         <div class="container">
-            &copy; 2025 - AvailabilityCollector - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            &copy; 2025 - AvailabilityCollector
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

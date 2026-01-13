@@ -46,3 +46,12 @@ body {
 .table-responsive .dropdown-menu {
   z-index: 1050 !important;
 }
+
+/* Custom container for Availability page - wider than default but not full width */
+.container-availability {
+  max-width: 95%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}

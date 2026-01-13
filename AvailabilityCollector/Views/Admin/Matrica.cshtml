@@ -1,12 +1,507 @@
+@model AvailabilityCollector.Models.ShiftMatrix
+@using AvailabilityCollector.Models
 @{
     ViewData["Title"] = "Matrica";
+    var availablePositions = ViewBag.AvailablePositions as List<Position> ?? new List<Position>();
+    var allPositions = ViewBag.AllPositions as List<Position> ?? new List<Position>();
+    
+    var dayLabels = new Dictionary<string, string>
+    {
+        { "pon", "Pon" },
+        { "tor", "Tor" },
+        { "sre", "Sre" },
+        { "cet", "Čet" },
+        { "pet", "Pet" },
+        { "sob", "Sob" },
+        { "ned", "Ned" }
+    };
+    var validDays = new[] { "pon", "tor", "sre", "cet", "pet", "sob", "ned" };
 }
 
 <div class="container mt-4">
-    <h1 class="mb-4">Matrica</h1>
-    
-    <div class="alert alert-info">
-        <h4><i class="bi bi-info-circle"></i> Funkcionalnost v pripravi</h4>
-        <p>Nastavitve matrice izmen bodo na voljo kmalu.</p>
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="bi me-2" id="toastIcon"></i>
+                <strong class="me-auto" id="toastTitle">Obvestilo</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toastMessage">
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Matrica izmen</h1>
+        <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveMatrica()">
+            <i class="bi bi-save"></i> Shrani
+        </button>
+    </div>
+
+    @if (Model.PositionShifts.Any())
+    {
+        <div class="row g-3 mb-4" id="positionsContainer">
+            @foreach (var positionShift in Model.PositionShifts.OrderBy(ps => ps.Position.Name))
+            {
+                <div class="col-12">
+                    <div class="card" data-position-shift-id="@positionShift.Id" data-position-id="@positionShift.PositionId">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">@positionShift.Position.Name</h5>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deletePosition(@positionShift.Id, '@positionShift.Position.Name')">
+                                <i class="bi bi-trash"></i> Izbriši pozicijo
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="shifts-@positionShift.Id" class="shifts-container">
+                                @if (positionShift.ShiftEntries.Any())
+                                {
+                                    @foreach (var entry in positionShift.ShiftEntries)
+                                    {
+                                        <div class="shift-entry mb-3 p-3 border rounded" data-entry-id="@entry.Id">
+                                            <div class="row g-3 align-items-end">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Dnevi:</label>
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        @foreach (var day in validDays)
+                                                        {
+                                                            var isSelected = entry.Days.Split(',').Select(d => d.Trim().ToLower()).Contains(day);
+                                                            <button type="button" 
+                                                                    class="btn btn-sm day-btn @(isSelected ? "btn-primary" : "btn-outline-secondary")"
+                                                                    data-day="@day"
+                                                                    onclick="toggleDay(@positionShift.Id, '@entry.Id', '@day')">
+                                                                @dayLabels[day]
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Čas izmene:</label>
+                                                    <div class="d-flex gap-2 align-items-center">
+                                                        @{
+                                                            var timeParts = entry.ShiftTime.Contains('-') 
+                                                                ? entry.ShiftTime.Split('-') 
+                                                                : new[] { "08:00", "15:00" };
+                                                            var startTime = timeParts.Length > 0 ? timeParts[0].Trim() : "08:00";
+                                                            var endTime = timeParts.Length > 1 ? timeParts[1].Trim() : "15:00";
+                                                        }
+                                                        <input type="time" 
+                                                               class="form-control shift-time-start" 
+                                                               value="@startTime"
+                                                               onchange="updateShiftTime(@positionShift.Id, '@entry.Id')">
+                                                        <span>-</span>
+                                                        <input type="time" 
+                                                               class="form-control shift-time-end" 
+                                                               value="@endTime"
+                                                               onchange="updateShiftTime(@positionShift.Id, '@entry.Id')">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <label class="form-label">Št. oseb:</label>
+                                                    <input type="number" 
+                                                           class="form-control" 
+                                                           value="@entry.NumberOfPeople" 
+                                                           min="1"
+                                                           onchange="updateShiftEntry(@positionShift.Id, '@entry.Id', 'numberOfPeople', this.value)">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteShift(@positionShift.Id, '@entry.Id')">
+                                                        <i class="bi bi-trash"></i> Izbriši izmeno
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p class="text-muted">Ni izmen. Dodaj prvo izmeno spodaj.</p>
+                                }
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addShift(@positionShift.Id)">
+                                <i class="bi bi-plus-circle"></i> Dodaj izmeno
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            <p>Matrica je prazna. Dodaj pozicije spodaj.</p>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Dodaj pozicijo</h5>
+        </div>
+        <div class="card-body">
+            @if (availablePositions.Any())
+            {
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Izberi obstoječo pozicijo:</label>
+                        <select id="newPositionSelect" class="form-select">
+                            <option value="">Izberi pozicijo...</option>
+                            @foreach (var pos in availablePositions)
+                            {
+                                <option value="@pos.Id">@pos.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" onclick="addPosition()" id="addPositionBtn" disabled>
+                            <i class="bi bi-plus-circle"></i> Dodaj izbrano pozicijo
+                        </button>
+                    </div>
+                </div>
+            }
+            
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Dodaj novo pozicijo:</label>
+                    <input type="text" id="newPositionName" class="form-control" placeholder="Vnesite ime nove pozicije">
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <button type="button" class="btn btn-outline-primary w-100" onclick="addNewPosition()" id="addNewPositionBtn">
+                        <i class="bi bi-plus-circle"></i> Dodaj novo pozicijo
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        let hasUnsavedChanges = false;
+        const dayLabels = {
+            pon: "Pon", tor: "Tor", sre: "Sre", cet: "Čet", 
+            pet: "Pet", sob: "Sob", ned: "Ned"
+        };
+        const validDays = ["pon", "tor", "sre", "cet", "pet", "sob", "ned"];
+
+        // Toast notification function
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            const toastTitle = document.getElementById('toastTitle');
+            
+            toastMessage.textContent = message;
+            
+            if (type === 'success') {
+                toastIcon.className = 'bi bi-check-circle-fill text-success me-2';
+                toastTitle.textContent = 'Uspešno';
+                toast.className = 'toast';
+            } else {
+                toastIcon.className = 'bi bi-exclamation-triangle-fill text-danger me-2';
+                toastTitle.textContent = 'Napaka';
+                toast.className = 'toast';
+            }
+            
+            const bsToast = new bootstrap.Toast(toast, {
+                autohide: true,
+                delay: 3000
+            });
+            bsToast.show();
+        }
+
+        // Track unsaved changes
+        function markAsChanged() {
+            hasUnsavedChanges = true;
+            document.getElementById('saveBtn').classList.remove('btn-primary');
+            document.getElementById('saveBtn').classList.add('btn-warning');
+        }
+
+        // Warn before leaving if unsaved changes
+        window.addEventListener('beforeunload', function(e) {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        // Enable/disable add position button
+        document.getElementById('newPositionSelect')?.addEventListener('change', function() {
+            document.getElementById('addPositionBtn').disabled = !this.value;
+        });
+
+        function toggleDay(positionShiftId, entryId, day) {
+            markAsChanged();
+            const btn = event.target;
+            const isSelected = btn.classList.contains('btn-primary');
+            
+            if (isSelected) {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-outline-secondary');
+            } else {
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-primary');
+            }
+        }
+
+        function updateShiftTime(positionShiftId, entryId) {
+            markAsChanged();
+            const entry = document.querySelector(`[data-entry-id="${entryId}"]`);
+            if (!entry) return;
+            
+            const startInput = entry.querySelector('.shift-time-start');
+            const endInput = entry.querySelector('.shift-time-end');
+            
+            if (startInput && endInput) {
+                const startTime = startInput.value;
+                const endTime = endInput.value;
+                
+                // Validate that end time is after start time
+                if (startTime && endTime) {
+                    const start = new Date(`2000-01-01T${startTime}`);
+                    const end = new Date(`2000-01-01T${endTime}`);
+                    
+                    if (end <= start) {
+                        showToast('Končni čas mora biti za začetnim časom.', 'error');
+                        // Reset end time to start time + 1 hour
+                        const newEnd = new Date(start.getTime() + 60 * 60 * 1000);
+                        endInput.value = newEnd.toTimeString().slice(0, 5);
+                    }
+                }
+            }
+        }
+
+        function addShift(positionShiftId) {
+            markAsChanged();
+            const container = document.getElementById(`shifts-${positionShiftId}`);
+            if (!container) {
+                console.error('Container not found for positionShiftId:', positionShiftId);
+                showToast('Napaka: Container ni najden.', 'error');
+                return;
+            }
+            
+            const entryId = 'new-' + Date.now();
+            
+            // Remove "Ni izmen" message if present
+            const noShiftsMsg = container.querySelector('p.text-muted');
+            if (noShiftsMsg) {
+                noShiftsMsg.remove();
+            }
+            
+            const newEntryHtml = `
+                <div class="shift-entry mb-3 p-3 border rounded" data-entry-id="${entryId}">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Dnevi:</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                ${validDays.map(day => `
+                                    <button type="button" 
+                                            class="btn btn-sm day-btn btn-outline-secondary"
+                                            data-day="${day}"
+                                            onclick="toggleDay(${positionShiftId}, '${entryId}', '${day}')">
+                                        ${dayLabels[day]}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Čas izmene:</label>
+                            <div class="d-flex gap-2 align-items-center">
+                                <input type="time" 
+                                       class="form-control shift-time-start" 
+                                       value="08:00"
+                                       onchange="updateShiftTime(${positionShiftId}, '${entryId}')">
+                                <span>-</span>
+                                <input type="time" 
+                                       class="form-control shift-time-end" 
+                                       value="15:00"
+                                       onchange="updateShiftTime(${positionShiftId}, '${entryId}')">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Št. oseb:</label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   value="1" 
+                                   min="1"
+                                   onchange="updateShiftEntry(${positionShiftId}, '${entryId}', 'numberOfPeople', this.value)">
+                        </div>
+                        <div class="col-md-3">
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteShift(${positionShiftId}, '${entryId}')">
+                                <i class="bi bi-trash"></i> Izbriši izmeno
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Append to container (before the "Dodaj izmeno" button which is outside)
+            container.insertAdjacentHTML('beforeend', newEntryHtml);
+        }
+
+        function deleteShift(positionShiftId, entryId) {
+            if (!confirm('Ali ste prepričani, da želite izbrisati to izmeno?')) return;
+            
+            markAsChanged();
+            const entry = document.querySelector(`[data-entry-id="${entryId}"]`);
+            if (entry) {
+                entry.remove();
+            }
+        }
+
+        async function addPosition() {
+            const select = document.getElementById('newPositionSelect');
+            const positionId = select.value;
+            
+            if (!positionId) return;
+
+            try {
+                const response = await fetch('/admin/matrica/add-position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positionId: parseInt(positionId) })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Pozicija je bila uspešno dodana.', 'success');
+                    setTimeout(() => location.reload(), 1000); // Reload after showing toast
+                } else {
+                    showToast('Napaka: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Napaka pri dodajanju pozicije.', 'error');
+            }
+        }
+
+        async function addNewPosition() {
+            const nameInput = document.getElementById('newPositionName');
+            const positionName = nameInput.value.trim();
+            
+            if (!positionName) {
+                showToast('Prosimo, vnesite ime pozicije.', 'error');
+                return;
+            }
+
+            try {
+                // First create the position
+                const createResponse = await fetch('/admin/add-position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: positionName })
+                });
+
+                const createResult = await createResponse.json();
+                if (!createResult.success) {
+                    showToast('Napaka pri ustvarjanju pozicije: ' + createResult.error, 'error');
+                    return;
+                }
+
+                // Then add it to the matrix
+                const addResponse = await fetch('/admin/matrica/add-position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positionId: createResult.positionId })
+                });
+
+                const addResult = await addResponse.json();
+                if (addResult.success) {
+                    showToast('Nova pozicija je bila uspešno dodana v matrico.', 'success');
+                    setTimeout(() => location.reload(), 1000); // Reload after showing toast
+                } else {
+                    showToast('Pozicija je bila ustvarjena, vendar je prišlo do napake pri dodajanju v matrico: ' + addResult.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Napaka pri dodajanju nove pozicije.', 'error');
+            }
+        }
+
+        function deletePosition(positionShiftId, positionName) {
+            if (!confirm(`Ali ste prepričani, da želite izbrisati pozicijo "${positionName}"?`)) return;
+
+            fetch('/admin/matrica/delete-position', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ positionShiftId: positionShiftId })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('Pozicija je bila uspešno izbrisana.', 'success');
+                    setTimeout(() => location.reload(), 1000); // Reload after showing toast
+                } else {
+                    showToast('Napaka: ' + result.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Napaka pri brisanju pozicije.', 'error');
+            });
+        }
+
+        async function saveMatrica() {
+            const positions = [];
+            const positionCards = document.querySelectorAll('[data-position-shift-id]');
+
+            positionCards.forEach(card => {
+                const positionShiftId = card.getAttribute('data-position-shift-id');
+                const positionId = parseInt(card.getAttribute('data-position-id'));
+                const shiftsContainer = card.querySelector('.shifts-container');
+                const entries = shiftsContainer.querySelectorAll('.shift-entry');
+                
+                const shiftEntries = [];
+                entries.forEach(entry => {
+                    const dayButtons = entry.querySelectorAll('.day-btn.btn-primary');
+                    const days = Array.from(dayButtons).map(btn => btn.getAttribute('data-day')).join(',');
+                    const startTimeInput = entry.querySelector('.shift-time-start');
+                    const endTimeInput = entry.querySelector('.shift-time-end');
+                    const numberOfPeople = parseInt(entry.querySelector('input[type="number"]').value) || 1;
+
+                    if (days && startTimeInput && endTimeInput) {
+                        const startTime = startTimeInput.value;
+                        const endTime = endTimeInput.value;
+                        
+                        if (startTime && endTime) {
+                            // Combine into "HH:mm-HH:mm" format for storage
+                            const shiftTime = `${startTime}-${endTime}`;
+                            
+                            shiftEntries.push({
+                                days: days,
+                                shiftTime: shiftTime,
+                                numberOfPeople: numberOfPeople
+                            });
+                        }
+                    }
+                });
+
+                positions.push({
+                    positionId: positionId,
+                    shiftEntries: shiftEntries
+                });
+            });
+
+            try {
+                const response = await fetch('/admin/matrica/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positions: positions })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    hasUnsavedChanges = false;
+                    document.getElementById('saveBtn').classList.remove('btn-warning');
+                    document.getElementById('saveBtn').classList.add('btn-primary');
+                    showToast('Matrica je bila uspešno shranjena.', 'success');
+                } else {
+                    showToast('Napaka: ' + (result.error || 'Neznana napaka'), 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Napaka pri shranjevanju matrice.', 'error');
+            }
+        }
+    </script>
+}

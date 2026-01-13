@@ -5,6 +5,7 @@
     var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
     var employmentTypes = ViewBag.EmploymentTypes as List<EmploymentType> ?? new List<EmploymentType>();
     var month = ViewBag.Month as AvailabilityMonth;
+    var holidays = ViewBag.Holidays as List<Holiday> ?? new List<Holiday>();
     
     // Parse month to get days
     var monthParts = Model.MonthKey.Split('-');
@@ -16,15 +17,15 @@
     
     // Create dictionary for quick lookup
     var submissionDict = Model.Submissions.ToDictionary(s => s.UserId);
+    
+    // Create set of holiday dates for quick lookup
+    var holidayDates = holidays.Select(h => h.Date).ToHashSet();
 }
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1>Razpoložljivost - @Model.MonthKey</h1>
         <div>
-            <a href="@Url.Action("Analiza", "Admin", new { monthKey = Model.MonthKey })" class="btn btn-info">
-                <i class="bi bi-graph-up"></i> Analiza
-            </a>
             <a href="@Url.Action("Razpolozljivosti", "Admin")" class="btn btn-secondary">
                 <i class="bi bi-arrow-left"></i> Poglej ostale oddaje
             </a>
@@ -36,7 +37,6 @@
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Pozicija:</label>
                     <select id="positionFilter" class="form-select">
                         <option value="">Vse pozicije</option>
                         @foreach (var pos in positions)
@@ -46,16 +46,14 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Vrsta zaposlitve:</label>
                     <select id="employmentTypeFilter" class="form-select">
-                        <option value="">Vse vrste</option>
+                        <option value="">Vse zaposlitve</option>
                         <option value="RednoZaposleni">Redno zaposleni</option>
                         <option value="Studenti">Študenti</option>
                         <option value="SP">s.p.</option>
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">&nbsp;</label>
                     <button type="button" class="btn btn-secondary w-100" onclick="clearFilters()">
                         <i class="bi bi-x-circle"></i> Počisti filtre
                     </button>
@@ -67,7 +65,7 @@
     <!-- Availability Table -->
     <div class="table-responsive">
         <table class="table table-bordered table-sm" id="availabilityTable">
-            <thead class="table-light sticky-top">
+            <thead class="table-light sticky-top ">
                 <tr>
                     <th style="min-width: 150px; position: sticky; left: 0; background: white; z-index: 10;">Zaposleni</th>
                     @for (int day = 1; day <= daysInMonth; day++)
@@ -75,9 +73,16 @@
                         var date = new DateOnly(year, monthNum, day);
                         var dayOfWeek = date.DayOfWeek;
                         var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
-                        <th class="text-center @(isWeekend ? "bg-light" : "")" style="min-width: 60px;">
+                        var isHoliday = holidayDates.Contains(date);
+                        var isSpecialDay = isWeekend || isHoliday;
+                        <th class="text-center @(isSpecialDay ? "bg-secondary bg-opacity-25" : "")" style="min-width: 60px;">
                             <div>@day</div>
                             <small class="text-muted">@date.ToString("ddd", new System.Globalization.CultureInfo("sl-SI"))</small>
+                            @if (isHoliday)
+                            {
+                                var holiday = holidays.FirstOrDefault(h => h.Date == date);
+                                <br /><small class="text-muted" style="font-size: 0.7em;">@(holiday?.Name ?? "")</small>
+                            }
                         </th>
                     }
                 </tr>
@@ -94,8 +99,8 @@
                         <td style="position: sticky; left: 0; background: white; z-index: 5;">
                             <strong>@(employee.FirstName ?? "") @(employee.LastName ?? "")</strong><br />
                             <small class="text-muted">
-                                @(employee.Position ?? "Ni pozicije") | 
-                                @(employee.EmploymentType?.ToString() ?? "Ni določeno")
+                                @*@(employee.Position ?? "Ni pozicije") | 
+                                @(employee.EmploymentType?.ToString() ?? "Ni določeno")*@
                             </small>
                         </td>
                         @for (int day = 1; day <= daysInMonth; day++)
@@ -104,6 +109,8 @@
                             var entry = entriesDict.ContainsKey(date) ? entriesDict[date] : null;
                             var dayOfWeek = date.DayOfWeek;
                             var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                            var isHoliday = holidayDates.Contains(date);
+                            var isSpecialDay = isWeekend || isHoliday;
                             
                             string cellClass = "text-center";
                             string cellContent = "";
@@ -111,7 +118,15 @@
                             
                             if (entry == null)
                             {
-                                cellClass += " bg-white";
+                                // For empty cells, use grey background if weekend/holiday, otherwise white
+                                if (isSpecialDay)
+                                {
+                                    cellClass += " bg-secondary bg-opacity-10";
+                                }
+                                else
+                                {
+                                    cellClass += " bg-white";
+                                }
                                 cellContent = "-";
                                 title = "Ni oddane razpoložljivosti";
                             }
@@ -135,9 +150,15 @@
                                         title = "Ni na voljo";
                                         break;
                                 }
+                                
+                                // For cells with entries on weekends/holidays, add grey overlay
+                                if (isSpecialDay)
+                                {
+                                    cellClass += " bg-secondary bg-opacity-10";
+                                }
                             }
                             
-                            <td class="@cellClass @(isWeekend ? "opacity-75" : "")" title="@title">
+                            <td class="@cellClass" title="@title">
                                 @cellContent
                             </td>
                         }
@@ -145,6 +166,12 @@
                 }
             </tbody>
         </table>
+    </div>
+    
+    <div class="d-flex justify-content-end mt-3">
+        <a href="@Url.Action("Analiza", "Admin", new { monthKey = Model.MonthKey })" class="btn btn-info">
+            <i class="bi bi-graph-up"></i> Analiza
+        </a>
     </div>
 </div>
 

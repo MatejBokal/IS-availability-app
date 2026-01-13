@@ -37,11 +37,31 @@ public class AdminController : Controller
     [Route("razpolozljivosti/history")]
     public async Task<IActionResult> History()
     {
-        var months = await _context.AvailabilityMonths
-            .OrderByDescending(m => m.MonthKey)
-            .ToListAsync();
+        var now = DateTime.UtcNow;
+        var currentMonth = new DateTime(now.Year, now.Month, 1);
+        var currentMonthKey = currentMonth.ToString("MM-yyyy");
         
-        return View(months);
+        // Load all months first, then filter in memory (can't use ParseExact in EF query)
+        var allMonths = await _context.AvailabilityMonths.ToListAsync();
+        
+        var pastAndCurrentMonths = allMonths
+            .Where(m =>
+            {
+                try
+                {
+                    var monthDate = DateTime.ParseExact(m.MonthKey, "MM-yyyy", null);
+                    // Include current month and past months only
+                    return monthDate <= currentMonth;
+                }
+                catch
+                {
+                    return false; // Skip invalid month keys
+                }
+            })
+            .OrderByDescending(m => m.MonthKey)
+            .ToList();
+        
+        return View(pastAndCurrentMonths);
     }
 
     [Route("razpolozljivosti/prihajajoce")]
@@ -52,18 +72,63 @@ public class AdminController : Controller
         var nextMonth = currentMonth.AddMonths(1);
         var monthAfterNext = currentMonth.AddMonths(2);
         
-        var upcomingMonths = await _context.AvailabilityMonths
-            .Where(m => 
-                DateTime.ParseExact(m.MonthKey, "MM-yyyy", null) >= nextMonth)
+        // Load all months first, then filter in memory (can't use ParseExact in EF query)
+        var allMonths = await _context.AvailabilityMonths.ToListAsync();
+        
+        // Find the last unlocked month
+        var lastUnlockedMonth = allMonths
+            .Where(m => m.IsUnlocked)
+            .Select(m =>
+            {
+                try
+                {
+                    return new { Month = m, Date = DateTime.ParseExact(m.MonthKey, "MM-yyyy", null) };
+                }
+                catch
+                {
+                    return null;
+                }
+            })
+            .Where(x => x != null)
+            .OrderByDescending(x => x!.Date)
+            .FirstOrDefault();
+        
+        // Calculate the next month to unlock (after the last unlocked month, or next month if none unlocked)
+        DateTime nextMonthToUnlock;
+        if (lastUnlockedMonth != null)
+        {
+            nextMonthToUnlock = lastUnlockedMonth.Date.AddMonths(1);
+        }
+        else
+        {
+            nextMonthToUnlock = nextMonth;
+        }
+        
+        var upcomingMonths = allMonths
+            .Where(m =>
+            {
+                try
+                {
+                    var monthDate = DateTime.ParseExact(m.MonthKey, "MM-yyyy", null);
+                    return monthDate >= nextMonth;
+                }
+                catch
+                {
+                    return false; // Skip invalid month keys
+                }
+            })
             .OrderBy(m => m.MonthKey)
-            .ToListAsync();
+            .ToList();
         
         ViewBag.NextMonthKey = nextMonth.ToString("MM-yyyy");
         ViewBag.MonthAfterNextKey = monthAfterNext.ToString("MM-yyyy");
+        ViewBag.NextMonthToUnlock = nextMonthToUnlock.ToString("MM-yyyy");
+        ViewBag.HasNextMonthToUnlock = !allMonths.Any(m => m.MonthKey == nextMonthToUnlock.ToString("MM-yyyy") && m.IsUnlocked);
         
         return View(upcomingMonths);
     }
 
+    [HttpGet]
     [Route("availability")]
     [Route("availability/{monthKey}")]
     public async Task<IActionResult> Availability(string? monthKey)
@@ -79,9 +144,17 @@ public class AdminController : Controller
         var month = await _context.AvailabilityMonths
             .FirstOrDefaultAsync(m => m.MonthKey == monthKey);
 
+        // If month doesn't exist, create it (unlocked by default for viewing)
         if (month == null)
         {
-            return NotFound();
+            month = new AvailabilityMonth
+            {
+                MonthKey = monthKey,
+                IsUnlocked = false, // Not unlocked yet, but we can still view it
+                CreatedAtUtc = DateTime.UtcNow
+            };
+            _context.AvailabilityMonths.Add(month);
+            await _context.SaveChangesAsync();
         }
 
         // Get all active users (employees)
@@ -100,13 +173,20 @@ public class AdminController : Controller
 
         // Get all positions for filter
         var positions = await _context.Positions
-            .Where(p => p.IsActive)
             .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        // Get holidays for this month's year
+        var monthParts = monthKey.Split('-');
+        var year = int.Parse(monthParts[1]);
+        var holidays = await _context.Holidays
+            .Where(h => h.Year == year)
             .ToListAsync();
 
         ViewBag.MonthKey = monthKey;
         ViewBag.Month = month;
         ViewBag.Positions = positions;
+        ViewBag.Holidays = holidays;
         ViewBag.EmploymentTypes = Enum.GetValues(typeof(EmploymentType))
             .Cast<EmploymentType>()
             .ToList();
@@ -138,7 +218,6 @@ public class AdminController : Controller
             .ToListAsync();
 
         var positions = await _context.Positions
-            .Where(p => p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
 
@@ -157,9 +236,149 @@ public class AdminController : Controller
     }
 
     [Route("nastavitve/matrica")]
-    public IActionResult Matrica()
+    public async Task<IActionResult> Matrica()
     {
-        return View();
+        // Get or create the single shift matrix
+        var matrix = await _context.ShiftMatrices
+            .Include(m => m.PositionShifts)
+                .ThenInclude(ps => ps.Position)
+            .Include(m => m.PositionShifts)
+                .ThenInclude(ps => ps.ShiftEntries)
+            .FirstOrDefaultAsync();
+
+        if (matrix == null)
+        {
+            matrix = new ShiftMatrix();
+            _context.ShiftMatrices.Add(matrix);
+            await _context.SaveChangesAsync();
+        }
+
+        // Get all positions for adding new ones
+        var allPositions = await _context.Positions
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        // Get positions already in matrix
+        var usedPositionIds = matrix.PositionShifts.Select(ps => ps.PositionId).ToHashSet();
+        var availablePositions = allPositions.Where(p => !usedPositionIds.Contains(p.Id)).ToList();
+
+        ViewBag.AvailablePositions = availablePositions;
+        ViewBag.AllPositions = allPositions;
+
+        return View(matrix);
+    }
+
+    [HttpPost]
+    [Route("matrica/save")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> SaveMatrica([FromBody] SaveMatricaRequest request)
+    {
+        var matrix = await _context.ShiftMatrices
+            .Include(m => m.PositionShifts)
+                .ThenInclude(ps => ps.ShiftEntries)
+            .FirstOrDefaultAsync();
+
+        if (matrix == null)
+        {
+            matrix = new ShiftMatrix();
+            _context.ShiftMatrices.Add(matrix);
+        }
+
+        // Clear existing data
+        _context.ShiftEntries.RemoveRange(matrix.PositionShifts.SelectMany(ps => ps.ShiftEntries));
+        _context.PositionShifts.RemoveRange(matrix.PositionShifts);
+
+        // Rebuild from request
+        foreach (var posData in request.Positions)
+        {
+            var positionShift = new PositionShift
+            {
+                ShiftMatrixId = matrix.Id,
+                PositionId = posData.PositionId,
+                ShiftEntries = posData.ShiftEntries.Select(e => new ShiftEntry
+                {
+                    Days = e.Days,
+                    ShiftTime = e.ShiftTime,
+                    NumberOfPeople = e.NumberOfPeople
+                }).ToList()
+            };
+            matrix.PositionShifts.Add(positionShift);
+        }
+
+        matrix.UpdatedAtUtc = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Matrica je bila uspešno shranjena." });
+    }
+
+    [HttpPost]
+    [Route("matrica/add-position")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> AddPositionToMatrica([FromBody] AddPositionToMatricaRequest request)
+    {
+        var matrix = await _context.ShiftMatrices
+            .Include(m => m.PositionShifts)
+            .FirstOrDefaultAsync();
+
+        if (matrix == null)
+        {
+            matrix = new ShiftMatrix();
+            _context.ShiftMatrices.Add(matrix);
+            await _context.SaveChangesAsync();
+        }
+
+        // Check if position already exists
+        if (matrix.PositionShifts.Any(ps => ps.PositionId == request.PositionId))
+        {
+            return Json(new { success = false, error = "Pozicija je že v matriki." });
+        }
+
+        var position = await _context.Positions.FindAsync(request.PositionId);
+        if (position == null)
+        {
+            return Json(new { success = false, error = "Pozicija ni najdena." });
+        }
+
+        var positionShift = new PositionShift
+        {
+            ShiftMatrixId = matrix.Id,
+            PositionId = request.PositionId,
+            ShiftEntries = new List<ShiftEntry>()
+        };
+
+        matrix.PositionShifts.Add(positionShift);
+        matrix.UpdatedAtUtc = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Pozicija je bila dodana.", positionShiftId = positionShift.Id, positionName = position.Name });
+    }
+
+    [HttpPost]
+    [Route("matrica/delete-position")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> DeletePositionFromMatrica([FromBody] DeletePositionFromMatricaRequest request)
+    {
+        var positionShift = await _context.PositionShifts
+            .Include(ps => ps.ShiftEntries)
+            .FirstOrDefaultAsync(ps => ps.Id == request.PositionShiftId);
+
+        if (positionShift == null)
+        {
+            return Json(new { success = false, error = "Pozicija ni najdena." });
+        }
+
+        _context.ShiftEntries.RemoveRange(positionShift.ShiftEntries);
+        _context.PositionShifts.Remove(positionShift);
+
+        var matrix = await _context.ShiftMatrices.FindAsync(positionShift.ShiftMatrixId);
+        if (matrix != null)
+        {
+            matrix.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Pozicija je bila izbrisana." });
     }
 
     [Route("nastavitve/splosno")]
@@ -303,6 +522,45 @@ public class AdminController : Controller
         await _userManager.AddToRoleAsync(user, "Worker");
 
         return Json(new { success = true, message = "Zaposleni je bil uspešno dodan." });
+    }
+
+    [HttpPost]
+    [Route("add-position")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> AddPosition([FromBody] AddPositionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return Json(new { success = false, error = "Ime pozicije je obvezno." });
+        }
+
+        // Check if position already exists
+        var existingPosition = await _context.Positions
+            .FirstOrDefaultAsync(p => p.Name.ToLower() == request.Name.Trim().ToLower());
+
+        if (existingPosition != null)
+        {
+            // If it exists but is inactive, reactivate it
+            if (!existingPosition.IsActive)
+            {
+                existingPosition.IsActive = true;
+                await _context.SaveChangesAsync();
+            }
+            return Json(new { success = true, message = "Pozicija že obstaja.", positionId = existingPosition.Id });
+        }
+
+        // Create new position
+        var position = new Position
+        {
+            Name = request.Name.Trim(),
+            IsActive = true,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        _context.Positions.Add(position);
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Pozicija je bila uspešno dodana.", positionId = position.Id, positionName = position.Name });
     }
 
     [HttpPost]
@@ -467,6 +725,68 @@ public class AdminController : Controller
         return Json(new { success = true, message = "Zaposleni je bil uspešno izbrisan." });
     }
 
+    [HttpPost]
+    [Route("migrate-positions")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> MigratePositions()
+    {
+        // Get all unique positions from employees (both primary and secondary)
+        var allUsers = await _userManager.Users.ToListAsync();
+        var positionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var user in allUsers)
+        {
+            // Add primary position
+            if (!string.IsNullOrWhiteSpace(user.Position))
+            {
+                positionNames.Add(user.Position.Trim());
+            }
+
+            // Add secondary positions (comma-separated)
+            if (!string.IsNullOrWhiteSpace(user.SecondaryPositions))
+            {
+                var secondaryPositions = user.SecondaryPositions
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .Where(p => !string.IsNullOrWhiteSpace(p));
+
+                foreach (var pos in secondaryPositions)
+                {
+                    positionNames.Add(pos);
+                }
+            }
+        }
+
+        // Get existing positions from database
+        var existingPositions = await _context.Positions
+            .Select(p => p.Name.ToLower())
+            .ToListAsync();
+
+        // Add new positions that don't exist
+        int addedCount = 0;
+        foreach (var positionName in positionNames)
+        {
+            if (!existingPositions.Contains(positionName.ToLower()))
+            {
+                var position = new Position
+                {
+                    Name = positionName,
+                    IsActive = true,
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+                _context.Positions.Add(position);
+                addedCount++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Json(new { 
+            success = true, 
+            message = $"Migracija končana. Dodanih {addedCount} novih pozicij iz {positionNames.Count} unikatnih pozicij zaposlenih." 
+        });
+    }
+
     private string GenerateRandomPassword(int length = 12)
     {
         const string validChars = "ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -511,6 +831,39 @@ public class RoleRequest
 public class EmployeeStatusRequest
 {
     public string UserId { get; set; } = default!;
+}
+
+public class AddPositionRequest
+{
+    public string Name { get; set; } = default!;
+}
+
+public class SaveMatricaRequest
+{
+    public List<PositionData> Positions { get; set; } = new();
+}
+
+public class PositionData
+{
+    public int PositionId { get; set; }
+    public List<ShiftEntryData> ShiftEntries { get; set; } = new();
+}
+
+public class ShiftEntryData
+{
+    public string Days { get; set; } = default!;
+    public string ShiftTime { get; set; } = default!;
+    public int NumberOfPeople { get; set; }
+}
+
+public class AddPositionToMatricaRequest
+{
+    public int PositionId { get; set; }
+}
+
+public class DeletePositionFromMatricaRequest
+{
+    public int PositionShiftId { get; set; }
 }
 
 // ViewModel for Availability table

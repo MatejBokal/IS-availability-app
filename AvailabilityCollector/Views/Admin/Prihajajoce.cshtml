@@ -3,6 +3,8 @@
     ViewData["Title"] = "Prihajajoče razpoložljivosti";
     var nextMonthKey = ViewBag.NextMonthKey as string;
     var monthAfterNextKey = ViewBag.MonthAfterNextKey as string;
+    var nextMonthToUnlock = ViewBag.NextMonthToUnlock as string;
+    var hasNextMonthToUnlock = ViewBag.HasNextMonthToUnlock as bool? ?? false;
 }
 
 <div class="container mt-4">
@@ -57,6 +59,25 @@
         }
     </div>
     
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-calendar-plus"></i> Odkleni mesec</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <input type="month" id="monthPicker" class="form-control" min="@DateTime.Now.ToString("yyyy-MM")" max="@DateTime.Now.AddMonths(8).ToString("yyyy-MM")" />
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary w-100" onclick="unlockSelectedMonth()">
+                        <i class="bi bi-unlock"></i> Odkleni izbrani mesec
+                    </button>
+                </div>
+            </div>
+            <small class="text-muted mt-2 d-block">Izberi mesec, ki ga želiš odkleniti.</small>
+        </div>
+    </div>
+    
     <div class="mt-4">
         <a href="@Url.Action("Razpolozljivosti", "Admin")" class="btn btn-secondary">
             <i class="bi bi-arrow-left"></i> Nazaj
@@ -104,5 +125,27 @@
             document.getElementById('unlockMonthKey').value = monthKey;
             document.getElementById('unlockMonthDisplay').value = monthKey;
         });
+        
+        function unlockSelectedMonth() {
+            const monthPicker = document.getElementById('monthPicker');
+            const selectedDate = monthPicker.value;
+            
+            if (!selectedDate) {
+                alert('Prosimo, izberite mesec.');
+                return;
+            }
+            
+            // Convert YYYY-MM to MM-yyyy format
+            const [year, month] = selectedDate.split('-');
+            const monthKey = `${month}-${year}`;
+            
+            // Set the modal values and show it
+            document.getElementById('unlockMonthKey').value = monthKey;
+            document.getElementById('unlockMonthDisplay').value = monthKey;
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(unlockModal);
+            modal.show();
+        }
     </script>
 }
