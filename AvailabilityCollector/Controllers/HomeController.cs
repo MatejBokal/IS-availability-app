@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using AvailabilityCollector.Models;
 
 namespace AvailabilityCollector.Controllers;
@@ -8,6 +9,11 @@ public class HomeController : Controller
 {
     public IActionResult Index()
     {
+        // Redirect to dashboard if user is logged in
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToAction("Index", "Dashboard");
+        }
         return View();
     }
 

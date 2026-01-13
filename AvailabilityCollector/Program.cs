@@ -125,6 +125,10 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
+app.MapControllerRoute(
+    name: "dashboard",
+    pattern: "dashboard",
+    defaults: new { controller = "Dashboard", action = "Index" });
 app.MapRazorPages();
 
 // Seed roles and admin user

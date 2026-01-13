@@ -1,0 +1,24 @@
+@{
+    ViewData["Title"] = "Analiza - " + ViewBag.MonthKey;
+}
+
+<div class="container mt-4">
+    <h1 class="mb-4">Analiza - @ViewBag.MonthKey</h1>
+    
+    <div class="alert alert-info">
+        <h4><i class="bi bi-info-circle"></i> Funkcionalnost v pripravi</h4>
+        <p>Analiza razpoložljivosti bo na voljo kmalu. Vključevala bo:</p>
+        <ul>
+            <li>Dneve s premalo zaposlenimi za izmene</li>
+            <li>Specifične izmene, ki jih ni mogoče pokriti</li>
+            <li>Odstotek pokritih izmen</li>
+            <li>Redno zaposlene z nezadostno razpoložljivostjo</li>
+        </ul>
+    </div>
+    
+    <div class="mt-4">
+        <a href="@Url.Action("Availability", "Admin", new { monthKey = ViewBag.MonthKey })" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Nazaj na razpoložljivost
+        </a>
+    </div>
+</div>

@@ -1,0 +1,65 @@
+@using Microsoft.AspNetCore.Identity
+@using AvailabilityCollector.Models
+@inject UserManager<ApplicationUser> UserManager
+@{
+    ViewData["Title"] = "Dashboard";
+    var user = await UserManager.GetUserAsync(User);
+    var isAdmin = User.IsInRole("Admin");
+}
+
+<div class="container mt-4">
+    <h1 class="mb-4">Dashboard</h1>
+    
+    @if (isAdmin)
+    {
+        <div class="row g-3">
+            <div class="col-md-6 col-lg-4">
+                <a href="@Url.Action("Availability", "Admin")" class="btn btn-primary btn-lg w-100 py-4">
+                    <i class="bi bi-calendar-check"></i><br />
+                    Aktualno
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="@Url.Action("Obvescanje", "Admin")" class="btn btn-info btn-lg w-100 py-4">
+                    <i class="bi bi-bell"></i><br />
+                    Obveščanje
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="@Url.Action("Razpolozljivosti", "Admin")" class="btn btn-success btn-lg w-100 py-4">
+                    <i class="bi bi-calendar3"></i><br />
+                    Razpoložljivosti
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="#" class="btn btn-warning btn-lg w-100 py-4">
+                    <i class="bi bi-calendar-plus"></i><br />
+                    Oddaj razpoložljivost
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="@Url.Action("Nastavitve", "Admin")" class="btn btn-secondary btn-lg w-100 py-4">
+                    <i class="bi bi-gear"></i><br />
+                    Nastavitve
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3">
+            <div class="col-md-6">
+                <a href="#" class="btn btn-primary btn-lg w-100 py-4">
+                    <i class="bi bi-calendar-plus"></i><br />
+                    Oddaj razpoložljivost
+                </a>
+            </div>
+            <div class="col-md-6">
+                <a href="#" class="btn btn-info btn-lg w-100 py-4">
+                    <i class="bi bi-calendar-check"></i><br />
+                    Moje razpoložljivosti
+                </a>
+            </div>
+        </div>
+    }
+</div>

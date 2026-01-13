@@ -1,0 +1,98 @@
+@model List<AvailabilityCollector.Models.Holiday>
+@{
+    ViewData["Title"] = "Splošne nastavitve";
+}
+
+<div class="container mt-4">
+    <h1 class="mb-4">Splošne nastavitve</h1>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Prazniki</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>Upravljanje praznikov za izračun mesečnih kvot</span>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addHolidayModal">
+                    <i class="bi bi-plus-circle"></i> Dodaj praznik
+                </button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Ime</th>
+                            <th>Datum</th>
+                            <th>Leto</th>
+                            <th>Akcije</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var holiday in Model)
+                        {
+                            <tr>
+                                <td>@holiday.Name</td>
+                                <td>@holiday.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@holiday.Year</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteHoliday(@holiday.Id)">Izbriši</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5>Druge nastavitve</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <p>Dodatne nastavitve (zaklepanje razpoložljivosti, obvestila, opomniki) bodo na voljo kmalu.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Holiday Modal -->
+<div class="modal fade" id="addHolidayModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj praznik</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form asp-controller="Admin" asp-action="AddHoliday" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Ime praznika:</label>
+                        <input type="text" name="name" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Datum:</label>
+                        <input type="date" name="date" class="form-control" required />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Prekliči</button>
+                    <button type="submit" class="btn btn-primary">Dodaj</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function deleteHoliday(id) {
+            if (confirm('Ali ste prepričani, da želite izbrisati ta praznik?')) {
+                // TODO: Implement
+                alert('Funkcionalnost bo na voljo kmalu');
+            }
+        }
+    </script>
+}

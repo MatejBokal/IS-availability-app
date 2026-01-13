@@ -1,0 +1,177 @@
+@model List<AvailabilityCollector.Models.ApplicationUser>
+@using Microsoft.AspNetCore.Identity
+@using AvailabilityCollector.Models
+@inject UserManager<ApplicationUser> UserManager
+@{
+    ViewData["Title"] = "Zaposleni";
+    var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
+    var employmentTypes = ViewBag.EmploymentTypes as List<EmploymentType> ?? new List<EmploymentType>();
+}
+
+<div class="container-fluid mt-4">
+    <h1 class="mb-4">Zaposleni</h1>
+    
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Ime</th>
+                    <th>E-pošta</th>
+                    <th>Vrsta zaposlitve</th>
+                    <th>Pozicija</th>
+                    <th>Stranske pozicije</th>
+                    <th>Status</th>
+                    <th>Akcije</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var employee in Model.Where(e => e.IsActive))
+                {
+                    var isAdmin = await UserManager.IsInRoleAsync(employee, "Admin");
+                    <tr>
+                        <td>@(employee.FirstName ?? "") @(employee.LastName ?? "")</td>
+                        <td>@employee.Email</td>
+                        <td>@(employee.EmploymentType?.ToString() ?? "Ni določeno")</td>
+                        <td>@(employee.Position ?? "Ni pozicije")</td>
+                        <td>@(employee.SecondaryPositions ?? "-")</td>
+                        <td>
+                            @if (isAdmin)
+                            {
+                                <span class="badge bg-primary">Admin</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Aktiven</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                    Akcije
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="generatePassword('@employee.Id', '@employee.Email')">Ustvari geslo</a></li>
+                                    @if (!isAdmin)
+                                    {
+                                        <li><a class="dropdown-item" href="#" onclick="assignAdminRole('@employee.Id')">Dodeli Admin vlogo</a></li>
+                                    }
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-warning" href="#" onclick="setInactive('@employee.Id')">Nastavi kot neaktiven</a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteEmployee('@employee.Id')">Izbriši</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    @if (Model.Any(e => !e.IsActive))
+    {
+        <h3 class="mt-5 mb-3">Neaktivni zaposleni</h3>
+        <div class="table-responsive">
+            <table class="table table-hover table-secondary">
+                <thead>
+                    <tr>
+                        <th>Ime</th>
+                        <th>E-pošta</th>
+                        <th>Vrsta zaposlitve</th>
+                        <th>Pozicija</th>
+                        <th>Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var employee in Model.Where(e => !e.IsActive))
+                    {
+                        <tr class="opacity-50">
+                            <td>@(employee.FirstName ?? "") @(employee.LastName ?? "")</td>
+                            <td>@employee.Email</td>
+                            <td>@(employee.EmploymentType?.ToString() ?? "Ni določeno")</td>
+                            <td>@(employee.Position ?? "Ni pozicije")</td>
+                            <td>
+                                <button class="btn btn-sm btn-success" onclick="setActive('@employee.Id')">Aktiviraj</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteEmployee('@employee.Id')">Izbriši</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<!-- Generate Password Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ustvarjeno geslo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>E-pošta:</strong> <span id="passwordEmail"></span></p>
+                <p><strong>Geslo:</strong> <code id="passwordValue"></code></p>
+                <div class="alert alert-warning">
+                    <small>Zapomni si to geslo! Ne bo prikazano ponovno.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="sendEmailLink" class="btn btn-primary" target="_blank">
+                    <i class="bi bi-envelope"></i> Pošlji e-pošto
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zapri</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function generatePassword(userId, email) {
+            fetch('@Url.Action("GeneratePassword", "Admin")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId: userId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('passwordEmail').textContent = email;
+                document.getElementById('passwordValue').textContent = data.password;
+                document.getElementById('sendEmailLink').href = 'mailto:' + email + '?subject=Vaše geslo za AvailabilityCollector&body=Vaše geslo je: ' + data.password;
+                new bootstrap.Modal(document.getElementById('passwordModal')).show();
+            })
+            .catch(error => {
+                alert('Napaka pri ustvarjanju gesla: ' + error);
+            });
+        }
+        
+        function assignAdminRole(userId) {
+            if (confirm('Ali ste prepričani, da želite dodeliti Admin vlogo temu uporabniku?')) {
+                // TODO: Implement
+                alert('Funkcionalnost bo na voljo kmalu');
+            }
+        }
+        
+        function setInactive(userId) {
+            if (confirm('Ali ste prepričani, da želite nastaviti tega zaposlenega kot neaktiven?')) {
+                // TODO: Implement
+                alert('Funkcionalnost bo na voljo kmalu');
+            }
+        }
+        
+        function setActive(userId) {
+            // TODO: Implement
+            alert('Funkcionalnost bo na voljo kmalu');
+        }
+        
+        function deleteEmployee(userId) {
+            if (confirm('Ali ste prepričani, da želite izbrisati tega zaposlenega? To dejanje je nepovratno!')) {
+                // TODO: Implement
+                alert('Funkcionalnost bo na voljo kmalu');
+            }
+        }
+    </script>
+}
