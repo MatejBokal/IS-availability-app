@@ -28,6 +28,13 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 builder.Services.AddControllers();
 builder.Services.AddControllersWithViews();
 
+// Configure route options for lowercase URLs
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.LowercaseUrls = true;
+    options.LowercaseQueryStrings = true;
+});
+
 // Add CORS for Android app
 builder.Services.AddCors(options =>
 {
@@ -122,13 +129,13 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
-app.MapControllerRoute(
     name: "dashboard",
     pattern: "dashboard",
     defaults: new { controller = "Dashboard", action = "Index" });
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=home}/{action=index}/{id?}")
+    .WithStaticAssets();
 app.MapRazorPages();
 
 // Seed roles and admin user

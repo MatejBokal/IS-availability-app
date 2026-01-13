@@ -12,7 +12,7 @@ public class HomeController : Controller
         // Redirect to dashboard if user is logged in
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Dashboard");
+            return Redirect("/dashboard");
         }
         return View();
     }
