@@ -143,6 +143,107 @@ public class AvailabilityController : ControllerBase
             new { message = "Submission created successfully", submissionId = submission.Id });
     }
 
+    [HttpPut("submissions/{id}")]
+    public async Task<ActionResult> UpdateAvailabilitySubmission(int id, CreateAvailabilityRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        // Find submission and verify ownership
+        var submission = await _context.AvailabilitySubmissions
+            .Include(s => s.Entries)
+            .Include(s => s.AvailabilityMonth)
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId);
+
+        if (submission == null)
+        {
+            return NotFound(new { error = "Submission not found or you don't have permission to update it" });
+        }
+
+        // Verify monthKey matches
+        if (submission.AvailabilityMonth.MonthKey != request.MonthKey)
+        {
+            return BadRequest(new { error = "MonthKey mismatch. Cannot change month of existing submission." });
+        }
+
+        // Check if month is still unlocked and not locked yet
+        if (!submission.AvailabilityMonth.IsUnlocked)
+        {
+            return BadRequest(new { error = "Month is not unlocked for submissions" });
+        }
+
+        if (submission.AvailabilityMonth.LockDateTimeUtc.HasValue && submission.AvailabilityMonth.LockDateTimeUtc.Value <= DateTime.UtcNow)
+        {
+            return BadRequest(new { error = "Submission deadline has passed for this month" });
+        }
+
+        // Validate entries
+        var validationError = ValidateEntries(request.Entries);
+        if (validationError != null)
+        {
+            return BadRequest(new { error = validationError });
+        }
+
+        // Delete old entries
+        _context.AvailabilityEntries.RemoveRange(submission.Entries);
+        submission.Entries.Clear();
+
+        // Add new entries
+        foreach (var entryDto in request.Entries)
+        {
+            var entry = new AvailabilityEntry
+            {
+                Date = DateOnly.Parse(entryDto.Date),
+                Type = Enum.Parse<AvailabilityType>(entryDto.Type),
+                StartTime = entryDto.StartTime != null ? TimeOnly.Parse(entryDto.StartTime) : null,
+                EndTime = entryDto.EndTime != null ? TimeOnly.Parse(entryDto.EndTime) : null
+            };
+            submission.Entries.Add(entry);
+        }
+
+        submission.SubmittedAtUtc = DateTime.UtcNow;
+        submission.Status = "Submitted";
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Submission updated successfully", submissionId = submission.Id });
+    }
+
+    [HttpDelete("submissions/{id}")]
+    public async Task<ActionResult> DeleteAvailabilitySubmission(int id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        // Find submission and verify ownership
+        var submission = await _context.AvailabilitySubmissions
+            .Include(s => s.AvailabilityMonth)
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId);
+
+        if (submission == null)
+        {
+            return NotFound(new { error = "Submission not found or you don't have permission to delete it" });
+        }
+
+        // Check if month is still unlocked (can't delete after lock)
+        if (submission.AvailabilityMonth.LockDateTimeUtc.HasValue && submission.AvailabilityMonth.LockDateTimeUtc.Value <= DateTime.UtcNow)
+        {
+            return BadRequest(new { error = "Cannot delete submission after the deadline has passed" });
+        }
+
+        // Delete submission (entries will cascade delete)
+        _context.AvailabilitySubmissions.Remove(submission);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Submission deleted successfully" });
+    }
+
     private string? ValidateEntries(List<AvailabilityEntryDto> entries)
     {
         foreach (var entry in entries)
