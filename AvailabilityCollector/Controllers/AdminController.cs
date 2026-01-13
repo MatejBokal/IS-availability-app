@@ -34,7 +34,7 @@ public class AdminController : Controller
         return View();
     }
 
-    [Route("razpolozljivosti/history")]
+    [Route("razpolozljivosti/zgodovina")]
     public async Task<IActionResult> History()
     {
         var now = DateTime.UtcNow;
@@ -129,8 +129,8 @@ public class AdminController : Controller
     }
 
     [HttpGet]
-    [Route("availability")]
-    [Route("availability/{monthKey}")]
+    [Route("aktualno")]
+    [Route("aktualno/{monthKey}")]
     public async Task<IActionResult> Availability(string? monthKey)
     {
         // If no monthKey provided, show next month (aktualno)
