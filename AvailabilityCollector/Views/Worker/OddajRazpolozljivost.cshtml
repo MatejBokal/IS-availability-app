@@ -1,0 +1,61 @@
+@model List<AvailabilityCollector.Models.AvailabilityMonth>
+@{
+    ViewData["Title"] = "Oddaj razpoložljivost";
+    var currentMonthKey = ViewBag.CurrentMonthKey as string;
+    var nextMonthKey = ViewBag.NextMonthKey as string;
+}
+
+<div class="container mt-4">
+    <h1 class="mb-4">Oddaj razpoložljivost</h1>
+    
+    <div class="alert alert-info">
+        <p class="mb-0">Izberite mesec, za katerega želite oddati razpoložljivost.</p>
+    </div>
+
+    @if (Model.Any())
+    {
+        <div class="list-group">
+            @foreach (var month in Model)
+            {
+                var isLocked = !month.IsUnlocked || 
+                              (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow);
+                var monthDate = DateTime.ParseExact(month.MonthKey, "MM-yyyy", null);
+                var isFuture = monthDate >= DateTime.ParseExact(nextMonthKey, "MM-yyyy", null);
+
+                <a href="@Url.Action("OddajRazpolozljivostMesec", "Worker", new { monthKey = month.MonthKey })" 
+                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(isLocked ? "list-group-item-secondary" : "")">
+                    <div>
+                        <h5 class="mb-1">@month.MonthKey</h5>
+                        <small class="text-muted">
+                            @if (isLocked)
+                            {
+                                <span class="badge bg-warning text-dark">Zaklenjeno</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Odklenjeno</span>
+                            }
+                            @if (isFuture)
+                            {
+                                <span class="badge bg-info text-dark">Prihodnji mesec</span>
+                            }
+                        </small>
+                    </div>
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-warning">
+            <p>Trenutno ni na voljo nobenega meseca za oddajo razpoložljivosti.</p>
+        </div>
+    }
+
+    <div class="mt-4">
+        <a href="@Url.Action("Index", "Dashboard")" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Nazaj
+        </a>
+    </div>
+</div>
