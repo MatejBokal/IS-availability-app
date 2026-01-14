@@ -57,6 +57,33 @@
                     <input type="number" id="minTimeRangeHours" class="form-control" min="1" max="24" step="0.5" value="@ViewBag.MinTimeRangeHours" required />
                     <small class="form-text text-muted">Minimalna dolžina časovnega razpona za "Delno" razpoložljivost (v urah).</small>
                 </div>
+                
+                <div class="mb-3">
+                    <label for="autoLockDayOfMonth" class="form-label">Avtomatsko zaklepanje (dan v mesecu):</label>
+                    <input type="number" id="autoLockDayOfMonth" class="form-control" min="1" max="31" step="1" value="@ViewBag.AutoLockDayOfMonth" required />
+                    <small class="form-text text-muted">Dan v prejšnjem mesecu, ko se mesec avtomatsko zaklene (npr. 25 = zaklenjeno 25. prejšnjega meseca). Če ni nastavljeno, privzeto je 1. dan meseca (zaklenjeno ob začetku meseca).</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enableAdminNotifications" @(ViewBag.EnableAdminNotifications == true ? "checked" : "")>
+                        <label class="form-check-label" for="enableAdminNotifications">
+                            Omogoči obvestila za administratorje
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">Če je omogočeno, administratorji bodo prejemali obvestila ob odklenitvi meseca.</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="lockAfterInitialSubmission" @(ViewBag.LockAfterInitialSubmission == true ? "checked" : "")>
+                        <label class="form-check-label" for="lockAfterInitialSubmission">
+                            Zakleni oddajo po prvi oddaji
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">Če je omogočeno, delavci ne morejo več urejati oddaje po prvi oddaji (do zaklepanja meseca).</small>
+                </div>
+                
                 <button type="button" class="btn btn-primary" onclick="saveSettings()">
                     <i class="bi bi-save"></i> Shrani nastavitve
                 </button>
@@ -154,9 +181,17 @@
 
         async function saveSettings() {
             const minTimeRangeHours = parseFloat(document.getElementById('minTimeRangeHours').value);
+            const autoLockDayOfMonth = parseInt(document.getElementById('autoLockDayOfMonth').value);
+            const lockAfterSubmission = document.getElementById('lockAfterInitialSubmission').checked;
+            const enableAdminNotifications = document.getElementById('enableAdminNotifications').checked;
             
             if (isNaN(minTimeRangeHours) || minTimeRangeHours < 1 || minTimeRangeHours > 24) {
                 alert('Prosimo, vnesite veljavno število ur (1-24).');
+                return;
+            }
+
+            if (isNaN(autoLockDayOfMonth) || autoLockDayOfMonth < 1 || autoLockDayOfMonth > 31) {
+                alert('Prosimo, vnesite veljavno število dni (1-31).');
                 return;
             }
 
@@ -167,8 +202,10 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        key: 'MinTimeRangeHours',
-                        value: minTimeRangeHours.toString()
+                        minTimeRangeHours: minTimeRangeHours,
+                        autoLockDayOfMonth: autoLockDayOfMonth,
+                        lockAfterInitialSubmission: lockAfterSubmission,
+                        enableAdminNotifications: enableAdminNotifications
                     })
                 });
 
@@ -188,7 +225,7 @@
                         toast.remove();
                     }, 3000);
                 } else {
-                    alert('Napaka: ' + (result.message || 'Neznana napaka'));
+                    alert('Napaka: ' + (result.message || 'Nekatere nastavitve niso bile shranjene.'));
                 }
             } catch (error) {
                 console.error('Error:', error);

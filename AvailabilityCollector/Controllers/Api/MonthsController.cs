@@ -44,6 +44,27 @@ public class MonthsController : ControllerBase
             return BadRequest(new { error = "Invalid monthKey format. Expected format: MM-yyyy (e.g., '02-2026')" });
         }
 
+        // Get auto-lock day of month setting (default to 1 = lock on month start)
+        var autoLockDaySetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AutoLockDayOfMonth");
+        
+        var autoLockDay = 1; // Default: lock on month start (day 1 of previous month)
+        if (autoLockDaySetting != null && int.TryParse(autoLockDaySetting.Value, out var day))
+        {
+            autoLockDay = day;
+        }
+
+        // Calculate lock date based on setting
+        var monthParts = monthKey.Split('-');
+        var year = int.Parse(monthParts[1]);
+        var monthNum = int.Parse(monthParts[0]);
+        var previousMonth = new DateTime(year, monthNum, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-1);
+        
+        // Use the specified day of the previous month, but ensure it's valid (handle months with fewer days)
+        var daysInPreviousMonth = DateTime.DaysInMonth(previousMonth.Year, previousMonth.Month);
+        var lockDay = Math.Min(autoLockDay, daysInPreviousMonth);
+        var lockDateTime = new DateTime(previousMonth.Year, previousMonth.Month, lockDay, 23, 59, 59, DateTimeKind.Utc);
+
         var month = await _context.AvailabilityMonths
             .FirstOrDefaultAsync(m => m.MonthKey == monthKey);
 
@@ -53,6 +74,7 @@ public class MonthsController : ControllerBase
             {
                 MonthKey = monthKey,
                 IsUnlocked = true,
+                LockDateTimeUtc = lockDateTime,
                 CreatedAtUtc = DateTime.UtcNow
             };
             _context.AvailabilityMonths.Add(month);
@@ -60,6 +82,7 @@ public class MonthsController : ControllerBase
         else
         {
             month.IsUnlocked = true;
+            month.LockDateTimeUtc = lockDateTime;
         }
 
         await _context.SaveChangesAsync();

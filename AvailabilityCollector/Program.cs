@@ -1,5 +1,6 @@
 using AvailabilityCollector.Data;
 using AvailabilityCollector.Models;
+using AvailabilityCollector.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -76,6 +77,9 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
+// Background service for auto-locking months
+builder.Services.AddHostedService<AutoLockService>();
 
 // Swagger + JWT support
 builder.Services.AddEndpointsApiExplorer();

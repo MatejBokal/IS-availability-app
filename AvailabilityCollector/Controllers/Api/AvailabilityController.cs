@@ -114,7 +114,23 @@ public class AvailabilityController : ControllerBase
         var existingSubmission = await _context.AvailabilitySubmissions
             .FirstOrDefaultAsync(s => s.UserId == userId && s.AvailabilityMonthId == month.Id);
 
-        if (existingSubmission != null)
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // If lock after initial submission is enabled and submission already exists, prevent creating new one
+        if (lockAfterSubmission && existingSubmission != null && existingSubmission.SubmittedAtUtc != default)
+        {
+            return BadRequest(new { error = "Submission already exists and editing is not allowed after initial submission. This setting is enabled by the administrator." });
+        }
+
+        if (existingSubmission != null && !lockAfterSubmission)
         {
             return Conflict(new { error = "Submission already exists for this month. Use PUT to update." });
         }
@@ -190,6 +206,22 @@ public class AvailabilityController : ControllerBase
         if (submission.AvailabilityMonth.LockDateTimeUtc.HasValue && submission.AvailabilityMonth.LockDateTimeUtc.Value <= DateTime.UtcNow)
         {
             return BadRequest(new { error = "Submission deadline has passed for this month" });
+        }
+
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // If lock after initial submission is enabled and submission already exists, prevent editing
+        if (lockAfterSubmission && submission.SubmittedAtUtc != default)
+        {
+            return BadRequest(new { error = "Editing is not allowed after initial submission. This setting is enabled by the administrator." });
         }
 
         // Validate entries

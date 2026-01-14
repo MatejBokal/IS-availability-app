@@ -1,0 +1,83 @@
+@{
+    ViewData["Title"] = "Nastavitve";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mt-4">
+    <h2>Nastavitve</h2>
+
+    <div class="card mt-3">
+        <div class="card-body">
+            <h5 class="card-title">Obvestila</h5>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="enableNotifications" @(ViewBag.EnableNotifications == true ? "checked" : "")>
+                <label class="form-check-label" for="enableNotifications">
+                    Omogoči obvestila
+                </label>
+            </div>
+            <small class="form-text text-muted">Prejemaj obvestila ob odklenitvi novih mesecev za oddajo razpoložljivosti.</small>
+        </div>
+    </div>
+
+    <button type="button" class="btn btn-primary mt-3" onclick="saveSettings()">
+        <i class="bi bi-save"></i> Shrani nastavitve
+    </button>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto">Obvestilo</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toastBody">
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function showToast(message, type = 'success') {
+            const toastEl = document.getElementById('toast');
+            const toastBody = document.getElementById('toastBody');
+            toastBody.textContent = message;
+            
+            // Update toast styling based on type
+            toastEl.className = 'toast';
+            if (type === 'error') {
+                toastEl.classList.add('text-bg-danger');
+            } else {
+                toastEl.classList.add('text-bg-success');
+            }
+            
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+
+        async function saveSettings() {
+            const enableNotifications = document.getElementById('enableNotifications').checked;
+
+            try {
+                const response = await fetch('/nastavitve/update-notification-preference', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        enableNotifications: enableNotifications
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('Nastavitve so bile shranjene', 'success');
+                } else {
+                    showToast('Napaka pri shranjevanju nastavitev', 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Napaka pri shranjevanju nastavitev', 'error');
+            }
+        }
+    </script>
+}

@@ -405,7 +405,40 @@ public class AdminController : Controller
             minTimeRangeHours = parsed;
         }
 
+        // Get auto-lock day of month setting (default to 1 = lock on month start)
+        var autoLockDaySetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AutoLockDayOfMonth");
+        
+        var autoLockDay = 1; // Default: lock on month start (day 1 of previous month)
+        if (autoLockDaySetting != null && int.TryParse(autoLockDaySetting.Value, out var day))
+        {
+            autoLockDay = day;
+        }
+
+        // Get lock after initial submission setting (default to false)
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false; // Default: unlocked
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // Get admin notifications setting (default to false)
+        var adminNotificationsSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "EnableAdminNotifications");
+        
+        var enableAdminNotifications = false; // Default: disabled
+        if (adminNotificationsSetting != null && bool.TryParse(adminNotificationsSetting.Value, out var adminNotifSetting))
+        {
+            enableAdminNotifications = adminNotifSetting;
+        }
+
         ViewBag.MinTimeRangeHours = minTimeRangeHours;
+        ViewBag.AutoLockDayOfMonth = autoLockDay;
+        ViewBag.LockAfterInitialSubmission = lockAfterSubmission;
+        ViewBag.EnableAdminNotifications = enableAdminNotifications;
         return View(holidays);
     }
 
@@ -427,12 +460,34 @@ public class AdminController : Controller
         var month = await _context.AvailabilityMonths
             .FirstOrDefaultAsync(m => m.MonthKey == monthKey);
 
+        // Get auto-lock day of month setting (default to 1 = lock on month start)
+        var autoLockDaySetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AutoLockDayOfMonth");
+        
+        var autoLockDay = 1; // Default: lock on month start (day 1 of previous month)
+        if (autoLockDaySetting != null && int.TryParse(autoLockDaySetting.Value, out var day))
+        {
+            autoLockDay = day;
+        }
+
+        // Calculate lock date based on setting
+        var monthParts = monthKey.Split('-');
+        var year = int.Parse(monthParts[1]);
+        var monthNum = int.Parse(monthParts[0]);
+        var previousMonth = new DateTime(year, monthNum, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-1);
+        
+        // Use the specified day of the previous month, but ensure it's valid (handle months with fewer days)
+        var daysInPreviousMonth = DateTime.DaysInMonth(previousMonth.Year, previousMonth.Month);
+        var lockDay = Math.Min(autoLockDay, daysInPreviousMonth);
+        var lockDateTime = new DateTime(previousMonth.Year, previousMonth.Month, lockDay, 23, 59, 59, DateTimeKind.Utc);
+
         if (month == null)
         {
             month = new AvailabilityMonth
             {
                 MonthKey = monthKey,
                 IsUnlocked = true,
+                LockDateTimeUtc = lockDateTime,
                 CreatedAtUtc = DateTime.UtcNow
             };
             _context.AvailabilityMonths.Add(month);
@@ -440,17 +495,43 @@ public class AdminController : Controller
         else
         {
             month.IsUnlocked = true;
+            month.LockDateTimeUtc = lockDateTime;
         }
 
         await _context.SaveChangesAsync();
 
-        // TODO: Send notification if sendNotification is true
+        // Send notifications if enabled
         if (sendNotification)
         {
+            // Check if admin notifications are enabled
+            var adminNotificationsSetting = await _context.AppSettings
+                .FirstOrDefaultAsync(s => s.Key == "EnableAdminNotifications");
+            
+            var enableAdminNotifications = false;
+            if (adminNotificationsSetting != null && bool.TryParse(adminNotificationsSetting.Value, out var adminNotifSetting))
+            {
+                enableAdminNotifications = adminNotifSetting;
+            }
+
+            if (enableAdminNotifications)
+            {
+                // Get all admin users
+                var adminUsers = await _userManager.GetUsersInRoleAsync("Admin");
+                // TODO: Send in-app notifications to admin users
+                // Implementation for in-app notifications will come later
+            }
+
+            // Get all workers with notifications enabled
+            var workerUsers = await _userManager.GetUsersInRoleAsync("Worker");
+            var workersWithNotifications = workerUsers
+                .Where(u => u.EnableNotifications && u.IsActive)
+                .ToList();
+            
+            // TODO: Send in-app notifications to workers
             // Implementation for in-app notifications will come later
         }
 
-        TempData["SuccessMessage"] = $"Mesec {monthKey} je bil uspešno odklenjen.";
+        TempData["SuccessMessage"] = $"Mesec {monthKey} je bil uspešno odklenjen. Zaklenjen bo {lockDateTime:dd.MM.yyyy HH:mm} UTC.";
         return RedirectToAction("Prihajajoce");
     }
 
@@ -521,30 +602,69 @@ public class AdminController : Controller
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> SaveSettings([FromBody] SaveSettingsRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Key))
+        // Save MinTimeRangeHours
+        var minTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        if (minTimeSetting == null)
         {
-            return Json(new { success = false, message = "Ključ nastavitve je obvezen." });
+            minTimeSetting = new AppSettings { Key = "MinTimeRangeHours" };
+            _context.AppSettings.Add(minTimeSetting);
         }
+        
+        var minTimeRangeHours = 4.0; // Default: 4 hours
+        if (request.MinTimeRangeHours.HasValue)
+        {
+            minTimeRangeHours = request.MinTimeRangeHours.Value;
+        }
+        minTimeSetting.Value = minTimeRangeHours.ToString();
+        minTimeSetting.UpdatedAtUtc = DateTime.UtcNow;
 
-        var setting = await _context.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == request.Key);
+        // Save AutoLockDayOfMonth
+        var autoLockDaySetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AutoLockDayOfMonth");
+        
+        if (autoLockDaySetting == null)
+        {
+            autoLockDaySetting = new AppSettings { Key = "AutoLockDayOfMonth" };
+            _context.AppSettings.Add(autoLockDaySetting);
+        }
+        
+        var autoLockDay = 1; // Default: lock on month start (day 1 of previous month)
+        if (request.AutoLockDayOfMonth.HasValue)
+        {
+            autoLockDay = Math.Max(1, Math.Min(31, request.AutoLockDayOfMonth.Value)); // Clamp between 1 and 31
+        }
+        autoLockDaySetting.Value = autoLockDay.ToString();
+        autoLockDaySetting.UpdatedAtUtc = DateTime.UtcNow;
 
-        if (setting == null)
+        // Save LockAfterInitialSubmission
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        if (lockAfterSubmissionSetting == null)
         {
-            setting = new AppSettings
-            {
-                Key = request.Key,
-                Value = request.Value,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow
-            };
-            _context.AppSettings.Add(setting);
+            lockAfterSubmissionSetting = new AppSettings { Key = "LockAfterInitialSubmission" };
+            _context.AppSettings.Add(lockAfterSubmissionSetting);
         }
-        else
+        
+        var lockAfterSubmission = request.LockAfterInitialSubmission ?? false;
+        lockAfterSubmissionSetting.Value = lockAfterSubmission.ToString();
+        lockAfterSubmissionSetting.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Save EnableAdminNotifications
+        var adminNotificationsSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "EnableAdminNotifications");
+        
+        if (adminNotificationsSetting == null)
         {
-            setting.Value = request.Value;
-            setting.UpdatedAtUtc = DateTime.UtcNow;
+            adminNotificationsSetting = new AppSettings { Key = "EnableAdminNotifications" };
+            _context.AppSettings.Add(adminNotificationsSetting);
         }
+        
+        var enableAdminNotifications = request.EnableAdminNotifications ?? false;
+        adminNotificationsSetting.Value = enableAdminNotifications.ToString();
+        adminNotificationsSetting.UpdatedAtUtc = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -937,8 +1057,10 @@ public class AddPositionToMatricaRequest
 
     public class SaveSettingsRequest
     {
-        public string Key { get; set; } = default!;
-        public string? Value { get; set; }
+        public double? MinTimeRangeHours { get; set; }
+        public int? AutoLockDayOfMonth { get; set; }
+        public bool? LockAfterInitialSubmission { get; set; }
+        public bool? EnableAdminNotifications { get; set; }
     }
 
 // ViewModel for Availability table

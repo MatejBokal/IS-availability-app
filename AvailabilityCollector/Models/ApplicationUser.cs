@@ -11,4 +11,5 @@ public class ApplicationUser : IdentityUser
     public EmploymentType? EmploymentType { get; set; }
     public string? SecondaryPositions { get; set; } // Comma-separated
     public bool IsActive { get; set; } = true;
+    public bool EnableNotifications { get; set; } = true; // Default: enabled
 }

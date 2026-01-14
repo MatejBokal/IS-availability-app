@@ -212,4 +212,34 @@ public class WorkerController : Controller
 
         return View();
     }
+
+    [HttpGet]
+    [Authorize(Roles = "Worker")]
+    public IActionResult Nastavitve()
+    {
+        return View();
+    }
+
+    [HttpPost]
+    [Route("nastavitve/update-notification-preference")]
+    [Authorize(Roles = "Worker")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> UpdateNotificationPreference([FromBody] UpdateNotificationPreferenceRequest request)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        user.EnableNotifications = request.EnableNotifications;
+        await _userManager.UpdateAsync(user);
+
+        return Ok(new { message = "Nastavitve so bile posodobljene" });
+    }
+
+    public class UpdateNotificationPreferenceRequest
+    {
+        public bool EnableNotifications { get; set; }
+    }
 }
