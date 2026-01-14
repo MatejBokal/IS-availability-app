@@ -119,7 +119,17 @@ public class WorkerController : Controller
         ViewBag.FirstDay = firstDay;
         ViewBag.Holidays = holidays;
         ViewBag.Submission = submission;
-        ViewBag.MinDurationMinutes = 240; // 4 hours - hardcoded for now
+        // Get minimum time range setting (default to 4 hours)
+        var minTimeRangeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        var minDurationMinutes = 240; // Default: 4 hours
+        if (minTimeRangeSetting != null && double.TryParse(minTimeRangeSetting.Value, out var hours))
+        {
+            minDurationMinutes = (int)(hours * 60);
+        }
+        
+        ViewBag.MinDurationMinutes = minDurationMinutes;
 
         return View();
     }
@@ -182,11 +192,23 @@ public class WorkerController : Controller
             .Where(h => h.Year == year)
             .ToListAsync();
 
+        // Get minimum time range setting (default to 4 hours)
+        var minTimeRangeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        var minDurationMinutes = 240; // Default: 4 hours
+        if (minTimeRangeSetting != null && double.TryParse(minTimeRangeSetting.Value, out var hours))
+        {
+            minDurationMinutes = (int)(hours * 60);
+        }
+        
         ViewBag.MonthKey = monthKey;
+        ViewBag.Month = month;
         ViewBag.DaysInMonth = daysInMonth;
         ViewBag.FirstDay = firstDay;
         ViewBag.Holidays = holidays;
         ViewBag.Submission = submission;
+        ViewBag.MinDurationMinutes = minDurationMinutes;
 
         return View();
     }

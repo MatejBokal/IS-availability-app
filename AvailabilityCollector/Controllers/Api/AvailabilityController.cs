@@ -13,11 +13,23 @@ namespace AvailabilityCollector.Controllers.Api;
 public class AvailabilityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private const int MinDurationMinutes = 240; // 4 hours - hardcoded for now
 
     public AvailabilityController(ApplicationDbContext context)
     {
         _context = context;
+    }
+
+    private async Task<int> GetMinDurationMinutesAsync()
+    {
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        if (setting != null && double.TryParse(setting.Value, out var hours))
+        {
+            return (int)(hours * 60);
+        }
+        
+        return 240; // Default: 4 hours
     }
 
     public record AvailabilityEntryDto(string Date, string Type, string? StartTime, string? EndTime);
@@ -108,7 +120,7 @@ public class AvailabilityController : ControllerBase
         }
 
         // Validate entries
-        var validationError = ValidateEntries(request.Entries);
+        var validationError = await ValidateEntriesAsync(request.Entries);
         if (validationError != null)
         {
             return BadRequest(new { error = validationError });
@@ -181,7 +193,7 @@ public class AvailabilityController : ControllerBase
         }
 
         // Validate entries
-        var validationError = ValidateEntries(request.Entries);
+        var validationError = await ValidateEntriesAsync(request.Entries);
         if (validationError != null)
         {
             return BadRequest(new { error = validationError });
@@ -244,7 +256,7 @@ public class AvailabilityController : ControllerBase
         return Ok(new { message = "Submission deleted successfully" });
     }
 
-    private string? ValidateEntries(List<AvailabilityEntryDto> entries)
+    private async Task<string?> ValidateEntriesAsync(List<AvailabilityEntryDto> entries)
     {
         foreach (var entry in entries)
         {
@@ -293,11 +305,13 @@ public class AvailabilityController : ControllerBase
                     return "EndTime must be greater than StartTime";
                 }
 
-                // Validate minimum duration (4 hours)
+                // Validate minimum duration (from settings)
+                var minDurationMinutes = await GetMinDurationMinutesAsync();
                 var duration = endTime - startTime;
-                if (duration.TotalMinutes < MinDurationMinutes)
+                if (duration.TotalMinutes < minDurationMinutes)
                 {
-                    return $"TimeRange duration must be at least {MinDurationMinutes} minutes ({MinDurationMinutes / 60} hours)";
+                    var hours = minDurationMinutes / 60.0;
+                    return $"TimeRange duration must be at least {minDurationMinutes} minutes ({hours} hours)";
                 }
             }
         }

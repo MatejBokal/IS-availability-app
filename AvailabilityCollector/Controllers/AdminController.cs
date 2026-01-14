@@ -395,6 +395,17 @@ public class AdminController : Controller
             .ThenBy(h => h.Date)
             .ToListAsync();
 
+        // Get minimum time range setting (default to 4 hours)
+        var minTimeRangeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        var minTimeRangeHours = 4.0; // Default
+        if (minTimeRangeSetting != null && double.TryParse(minTimeRangeSetting.Value, out var parsed))
+        {
+            minTimeRangeHours = parsed;
+        }
+
+        ViewBag.MinTimeRangeHours = minTimeRangeHours;
         return View(holidays);
     }
 
@@ -503,6 +514,41 @@ public class AdminController : Controller
         await _context.SaveChangesAsync();
 
         return Json(new { success = true, message = "Praznik je bil uspešno izbrisan." });
+    }
+
+    [HttpPost]
+    [Route("save-settings")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> SaveSettings([FromBody] SaveSettingsRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Key))
+        {
+            return Json(new { success = false, message = "Ključ nastavitve je obvezen." });
+        }
+
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == request.Key);
+
+        if (setting == null)
+        {
+            setting = new AppSettings
+            {
+                Key = request.Key,
+                Value = request.Value,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+            _context.AppSettings.Add(setting);
+        }
+        else
+        {
+            setting.Value = request.Value;
+            setting.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Nastavitve so bile uspešno shranjene." });
     }
 
     [HttpPost]
@@ -884,10 +930,16 @@ public class AddPositionToMatricaRequest
     public int PositionId { get; set; }
 }
 
-public class DeletePositionFromMatricaRequest
-{
-    public int PositionShiftId { get; set; }
-}
+    public class DeletePositionFromMatricaRequest
+    {
+        public int PositionShiftId { get; set; }
+    }
+
+    public class SaveSettingsRequest
+    {
+        public string Key { get; set; } = default!;
+        public string? Value { get; set; }
+    }
 
 // ViewModel for Availability table
 public class AvailabilityTableViewModel

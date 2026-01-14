@@ -21,6 +21,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
            public DbSet<ShiftMatrix> ShiftMatrices => Set<ShiftMatrix>();
            public DbSet<PositionShift> PositionShifts => Set<PositionShift>();
            public DbSet<ShiftEntry> ShiftEntries => Set<ShiftEntry>();
+           public DbSet<AppSettings> AppSettings => Set<AppSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +50,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         // Index for Holiday date lookups
                modelBuilder.Entity<Holiday>()
                    .HasIndex(h => new { h.Year, h.Date });
+
+        // Unique constraint for AppSettings key
+        modelBuilder.Entity<AppSettings>()
+            .HasIndex(s => s.Key)
+            .IsUnique();
 
                // ShiftMatrix relationships
                modelBuilder.Entity<PositionShift>()

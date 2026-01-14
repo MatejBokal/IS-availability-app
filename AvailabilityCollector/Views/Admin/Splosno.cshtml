@@ -46,6 +46,24 @@
         </div>
     </div>
     
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Nastavitve razpoložljivosti</h5>
+        </div>
+        <div class="card-body">
+            <form id="settingsForm">
+                <div class="mb-3">
+                    <label for="minTimeRangeHours" class="form-label">Minimalna dolžina časovnega razpona (ure):</label>
+                    <input type="number" id="minTimeRangeHours" class="form-control" min="1" max="24" step="0.5" value="@ViewBag.MinTimeRangeHours" required />
+                    <small class="form-text text-muted">Minimalna dolžina časovnega razpona za "Delno" razpoložljivost (v urah).</small>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                    <i class="bi bi-save"></i> Shrani nastavitve
+                </button>
+            </form>
+        </div>
+    </div>
+    
     <div class="card">
         <div class="card-header">
             <h5>Druge nastavitve</h5>
@@ -131,6 +149,50 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Napaka pri brisanju praznika.');
+            }
+        }
+
+        async function saveSettings() {
+            const minTimeRangeHours = parseFloat(document.getElementById('minTimeRangeHours').value);
+            
+            if (isNaN(minTimeRangeHours) || minTimeRangeHours < 1 || minTimeRangeHours > 24) {
+                alert('Prosimo, vnesite veljavno število ur (1-24).');
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/save-settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        key: 'MinTimeRangeHours',
+                        value: minTimeRangeHours.toString()
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                    toast.style.zIndex = '9999';
+                    toast.innerHTML = `
+                        Nastavitve so bile uspešno shranjene.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(toast);
+                    
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 3000);
+                } else {
+                    alert('Napaka: ' + (result.message || 'Neznana napaka'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Napaka pri shranjevanju nastavitev.');
             }
         }
     </script>
