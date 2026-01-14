@@ -11,7 +11,8 @@ object RetrofitClient {
     // Change this to your server's IP address
     // For emulator use: 10.0.2.2 (maps to localhost)
     // For physical device: use your computer's IP address
-    private const val BASE_URL = "http://10.0.2.2:5000/"
+    // Port 5180 matches the ASP.NET backend launchSettings.json
+    private const val BASE_URL = "http://10.0.2.2:5180/"
     
     private var authToken: String? = null
     
