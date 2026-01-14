@@ -8,7 +8,7 @@ using AvailabilityCollector.Models;
 
 namespace AvailabilityCollector.Controllers;
 
-[Authorize(Roles = "Worker")]
+[Authorize(Roles = "Worker,Admin")]
 public class WorkerController : Controller
 {
     private readonly ApplicationDbContext _context;
@@ -214,7 +214,7 @@ public class WorkerController : Controller
     }
 
     [HttpGet]
-    [Authorize(Roles = "Worker")]
+    [Authorize(Roles = "Worker,Admin")]
     public IActionResult Nastavitve()
     {
         return View();
@@ -222,7 +222,7 @@ public class WorkerController : Controller
 
     [HttpPost]
     [Route("nastavitve/update-notification-preference")]
-    [Authorize(Roles = "Worker")]
+    [Authorize(Roles = "Worker,Admin")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> UpdateNotificationPreference([FromBody] UpdateNotificationPreferenceRequest request)
     {

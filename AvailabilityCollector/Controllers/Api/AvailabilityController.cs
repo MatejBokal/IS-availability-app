@@ -9,7 +9,7 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/availability/my")]
-[Authorize(Roles = "Worker")]
+[Authorize(Roles = "Worker,Admin")]
 public class AvailabilityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
