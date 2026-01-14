@@ -36,7 +36,7 @@
                                 <td>@holiday.Date.ToString("dd.MM.yyyy")</td>
                                 <td>@holiday.Year</td>
                                 <td>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteHoliday(@holiday.Id)">Izbriši</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteHoliday(@holiday.Id, event)">Izbriši</button>
                                 </td>
                             </tr>
                         }
@@ -88,10 +88,49 @@
 
 @section Scripts {
     <script>
-        function deleteHoliday(id) {
-            if (confirm('Ali ste prepričani, da želite izbrisati ta praznik?')) {
-                // TODO: Implement
-                alert('Funkcionalnost bo na voljo kmalu');
+        async function deleteHoliday(id, event) {
+            if (!confirm('Ali ste prepričani, da želite izbrisati ta praznik?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/delete-holiday', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(id)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Show success message
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                    toast.style.zIndex = '9999';
+                    toast.innerHTML = `
+                        ${result.message || 'Praznik je bil uspešno izbrisan.'}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(toast);
+                    
+                    // Remove the row from the table
+                    const row = event.target.closest('tr');
+                    if (row) {
+                        row.remove();
+                    }
+                    
+                    // Auto-remove toast after 3 seconds
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 3000);
+                } else {
+                    alert('Napaka: ' + (result.message || 'Neznana napaka'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Napaka pri brisanju praznika.');
             }
         }
     </script>

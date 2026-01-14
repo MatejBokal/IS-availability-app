@@ -489,6 +489,23 @@ public class AdminController : Controller
     }
 
     [HttpPost]
+    [Route("delete-holiday")]
+    [IgnoreAntiforgeryToken] // For AJAX call
+    public async Task<IActionResult> DeleteHoliday([FromBody] int id)
+    {
+        var holiday = await _context.Holidays.FindAsync(id);
+        if (holiday == null)
+        {
+            return Json(new { success = false, message = "Praznik ni najden." });
+        }
+
+        _context.Holidays.Remove(holiday);
+        await _context.SaveChangesAsync();
+
+        return Json(new { success = true, message = "Praznik je bil uspešno izbrisan." });
+    }
+
+    [HttpPost]
     [Route("add-employee")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> AddEmployee([FromBody] AddEmployeeRequest request)
