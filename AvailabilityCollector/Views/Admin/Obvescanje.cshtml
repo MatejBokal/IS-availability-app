@@ -1,12 +1,162 @@
+@using AvailabilityCollector.Models
 @{
     ViewData["Title"] = "Obveščanje";
+    var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
+    var employmentTypes = Enum.GetValues(typeof(EmploymentType)).Cast<EmploymentType>().ToList();
 }
 
 <div class="container mt-4">
     <h1 class="mb-4">Obveščanje</h1>
     
-    <div class="alert alert-info">
-        <h4><i class="bi bi-info-circle"></i> Funkcionalnost v pripravi</h4>
-        <p>Upravljanje obvestil in opomnikov bo na voljo kmalu.</p>
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Pošlji obvestilo</h5>
+        </div>
+        <div class="card-body">
+            <form id="sendNotificationForm">
+                <div class="mb-3">
+                    <label for="notificationTitle" class="form-label">Naslov:</label>
+                    <input type="text" id="notificationTitle" class="form-control" required maxlength="200" />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="notificationBody" class="form-label">Sporočilo:</label>
+                    <textarea id="notificationBody" class="form-control" rows="4" required maxlength="2000"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Prejemniki:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="recipientType" id="recipientAll" value="all" checked>
+                        <label class="form-check-label" for="recipientAll">
+                            Vsi zaposleni
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="recipientType" id="recipientAdmins" value="admins">
+                        <label class="form-check-label" for="recipientAdmins">
+                            Samo administratorji
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="recipientType" id="recipientPosition" value="position">
+                        <label class="form-check-label" for="recipientPosition">
+                            Po poziciji
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="recipientType" id="recipientEmploymentType" value="employmentType">
+                        <label class="form-check-label" for="recipientEmploymentType">
+                            Po vrsti zaposlitve
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mb-3" id="positionSelect" style="display: none;">
+                    <label for="selectedPosition" class="form-label">Pozicija:</label>
+                    <select id="selectedPosition" class="form-select">
+                        <option value="">Izberite pozicijo</option>
+                        @foreach (var position in positions)
+                        {
+                            <option value="@position.Name">@position.Name</option>
+                        }
+                    </select>
+                </div>
+                
+                <div class="mb-3" id="employmentTypeSelect" style="display: none;">
+                    <label for="selectedEmploymentType" class="form-label">Vrsta zaposlitve:</label>
+                    <select id="selectedEmploymentType" class="form-select">
+                        <option value="">Izberite vrsto zaposlitve</option>
+                        <option value="RednoZaposleni">Redno zaposleni</option>
+                        <option value="Studenti">Študenti</option>
+                        <option value="SP">s.p.</option>
+                    </select>
+                </div>
+                
+                <button type="button" class="btn btn-primary" onclick="sendNotification()">
+                    <i class="bi bi-send"></i> Pošlji obvestilo
+                </button>
+            </form>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        document.querySelectorAll('input[name="recipientType"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const positionSelect = document.getElementById('positionSelect');
+                const employmentTypeSelect = document.getElementById('employmentTypeSelect');
+                
+                if (this.value === 'position') {
+                    positionSelect.style.display = 'block';
+                    employmentTypeSelect.style.display = 'none';
+                } else if (this.value === 'employmentType') {
+                    positionSelect.style.display = 'none';
+                    employmentTypeSelect.style.display = 'block';
+                } else {
+                    positionSelect.style.display = 'none';
+                    employmentTypeSelect.style.display = 'none';
+                }
+            });
+        });
+
+        async function sendNotification() {
+            const title = document.getElementById('notificationTitle').value.trim();
+            const body = document.getElementById('notificationBody').value.trim();
+            const recipientType = document.querySelector('input[name="recipientType"]:checked').value;
+            
+            if (!title || !body) {
+                alert('Prosimo, vnesite naslov in sporočilo.');
+                return;
+            }
+            
+            let selectedPosition = null;
+            let selectedEmploymentType = null;
+            
+            if (recipientType === 'position') {
+                selectedPosition = document.getElementById('selectedPosition').value;
+                if (!selectedPosition) {
+                    alert('Prosimo, izberite pozicijo.');
+                    return;
+                }
+            } else if (recipientType === 'employmentType') {
+                selectedEmploymentType = document.getElementById('selectedEmploymentType').value;
+                if (!selectedEmploymentType) {
+                    alert('Prosimo, izberite vrsto zaposlitve.');
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch('/admin/send-notification', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        body: body,
+                        recipientType: recipientType,
+                        position: selectedPosition,
+                        employmentType: selectedEmploymentType
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Obvestilo je bilo uspešno poslano.');
+                    document.getElementById('sendNotificationForm').reset();
+                    document.getElementById('positionSelect').style.display = 'none';
+                    document.getElementById('employmentTypeSelect').style.display = 'none';
+                } else {
+                    alert('Napaka: ' + (result.error || 'Neznana napaka'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Napaka pri pošiljanju obvestila.');
+            }
+        }
+    </script>
+}

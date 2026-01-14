@@ -7,6 +7,8 @@
     var holidays = ViewBag.Holidays as List<Holiday> ?? new List<Holiday>();
     var submission = ViewBag.Submission as AvailabilitySubmission;
     var minDurationMinutes = (int)ViewBag.MinDurationMinutes;
+    var allowedStartTime = ViewBag.AllowedStartTime as string ?? "07:00";
+    var allowedEndTime = ViewBag.AllowedEndTime as string ?? "23:00";
     var monthKey = ViewBag.MonthKey as string;
     
     var isLocked = !month.IsUnlocked || (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow);
@@ -200,14 +202,17 @@
                 <label class="form-label">Čas:</label>
                 <div class="row g-2">
                     <div class="col-md-5">
-                        <input type="time" id="timeStart" class="form-control" placeholder="8:00">
+                        <input type="time" id="timeStart" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="8:00">
                     </div>
                     <div class="col-md-2 text-center align-self-center">-</div>
                     <div class="col-md-5">
-                        <input type="time" id="timeEnd" class="form-control" placeholder="15:00">
+                        <input type="time" id="timeEnd" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="15:00">
                     </div>
                 </div>
-                <small class="text-muted">Minimalna dolžina: @(minDurationMinutes / 60) ur</small>
+                <small class="text-muted">
+                    Dovoljeni časovni razpon: @allowedStartTime - @allowedEndTime<br />
+                    Minimalna dolžina: @(minDurationMinutes / 60) ur
+                </small>
                 <div class="mt-2">
                     <button type="button" class="btn btn-warning" onclick="applyTimeRange()">
                         <i class="bi bi-check"></i> Potrdi čas
@@ -257,6 +262,8 @@
     <script>
         const monthKey = '@monthKey';
         const minDurationMinutes = @minDurationMinutes;
+        const allowedStartTime = '@allowedStartTime';
+        const allowedEndTime = '@allowedEndTime';
         const submissionId = @(submission?.Id ?? 0);
         const isLocked = @(isLocked ? "true" : "false");
         
@@ -368,18 +375,34 @@
                 return;
             }
             
-            // Validate minimum duration
+            // Validate time format
             const start = new Date(`2000-01-01T${startTime}`);
             const end = new Date(`2000-01-01T${endTime}`);
+            
+            if (end <= start) {
+                showToast('Končni čas mora biti za začetnim časom.', 'error');
+                return;
+            }
+            
+            // Validate allowed time window
+            const allowedStart = new Date(`2000-01-01T${allowedStartTime}`);
+            const allowedEnd = new Date(`2000-01-01T${allowedEndTime}`);
+            
+            if (start < allowedStart) {
+                showToast(`Začetni čas mora biti najmanj ${allowedStartTime}.`, 'error');
+                return;
+            }
+            
+            if (end > allowedEnd) {
+                showToast(`Končni čas mora biti največ ${allowedEndTime}.`, 'error');
+                return;
+            }
+            
+            // Validate minimum duration
             const durationMinutes = (end - start) / (1000 * 60);
             
             if (durationMinutes < minDurationMinutes) {
                 showToast(`Časovni razpon mora biti vsaj ${minDurationMinutes / 60} ur.`, 'error');
-                return;
-            }
-            
-            if (end <= start) {
-                showToast('Končni čas mora biti za začetnim časom.', 'error');
                 return;
             }
             

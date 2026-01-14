@@ -81,6 +81,12 @@ builder.Services.AddAuthorization();
 // Background service for auto-locking months
 builder.Services.AddHostedService<AutoLockService>();
 
+// Background service for notification reminders
+builder.Services.AddHostedService<NotificationReminderService>();
+
+// Notification service
+builder.Services.AddScoped<NotificationService>();
+
 // Swagger + JWT support
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

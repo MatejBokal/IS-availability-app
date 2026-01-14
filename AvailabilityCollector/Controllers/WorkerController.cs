@@ -129,7 +129,28 @@ public class WorkerController : Controller
             minDurationMinutes = (int)(hours * 60);
         }
         
+        // Get allowed time window settings (default to 07:00 - 23:00)
+        var allowedStartTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var allowedStartTime = "07:00"; // Default
+        if (allowedStartTimeSetting != null && !string.IsNullOrEmpty(allowedStartTimeSetting.Value))
+        {
+            allowedStartTime = allowedStartTimeSetting.Value;
+        }
+
+        var allowedEndTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var allowedEndTime = "23:00"; // Default
+        if (allowedEndTimeSetting != null && !string.IsNullOrEmpty(allowedEndTimeSetting.Value))
+        {
+            allowedEndTime = allowedEndTimeSetting.Value;
+        }
+        
         ViewBag.MinDurationMinutes = minDurationMinutes;
+        ViewBag.AllowedStartTime = allowedStartTime;
+        ViewBag.AllowedEndTime = allowedEndTime;
 
         return View();
     }

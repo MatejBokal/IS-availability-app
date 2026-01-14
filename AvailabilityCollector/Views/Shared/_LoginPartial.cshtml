@@ -7,6 +7,27 @@
 @if (SignInManager.IsSignedIn(User))
 {
     <li class="nav-item">
+        <div class="dropdown" style="position: relative;">
+            <a class="nav-link text-dark position-relative" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="text-decoration: none;">
+                <i class="bi bi-bell" style="font-size: 1.2rem;"></i>
+                <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none; font-size: 0.7rem;">0</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationDropdown" style="min-width: 350px; max-height: 400px; overflow-y: auto;">
+                <li><h6 class="dropdown-header">Obvestila</h6></li>
+                <li><hr class="dropdown-divider"></li>
+                <li id="notificationList">
+                    <div class="text-center p-3">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Nalaganje...</span>
+                        </div>
+                    </div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-center" asp-controller="Notifications" asp-action="Index">Prikaži vsa obvestila</a></li>
+            </ul>
+        </div>
+    </li>
+    <li class="nav-item">
         <a id="manage" class="nav-link text-dark" asp-area="Identity" asp-page="/Account/Manage/Index" title="Manage">Hello @UserManager.GetUserName(User)!</a>
     </li>
     <li class="nav-item">

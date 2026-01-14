@@ -36,6 +36,35 @@ public class SettingsController : ControllerBase
         return Ok(4.0); // Default: 4 hours
     }
 
+    [HttpGet("allowed-time-window")]
+    public async Task<ActionResult<AllowedTimeWindowResponse>> GetAllowedTimeWindow()
+    {
+        var startTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var endTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var startTime = "07:00"; // Default: 07:00
+        var endTime = "23:00"; // Default: 23:00
+        
+        if (startTimeSetting != null && !string.IsNullOrEmpty(startTimeSetting.Value))
+        {
+            startTime = startTimeSetting.Value;
+        }
+        
+        if (endTimeSetting != null && !string.IsNullOrEmpty(endTimeSetting.Value))
+        {
+            endTime = endTimeSetting.Value;
+        }
+
+        return Ok(new AllowedTimeWindowResponse
+        {
+            StartTime = startTime,
+            EndTime = endTime
+        });
+    }
+
     [HttpGet("notifications")]
     public async Task<ActionResult<bool>> GetNotificationPreference()
     {
@@ -78,5 +107,11 @@ public class SettingsController : ControllerBase
     public class NotificationPreferenceRequest
     {
         public bool EnableNotifications { get; set; }
+    }
+
+    public class AllowedTimeWindowResponse
+    {
+        public string StartTime { get; set; } = default!;
+        public string EndTime { get; set; } = default!;
     }
 }

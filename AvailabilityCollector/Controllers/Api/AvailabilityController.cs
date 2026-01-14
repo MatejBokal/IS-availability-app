@@ -32,6 +32,32 @@ public class AvailabilityController : ControllerBase
         return 240; // Default: 4 hours
     }
 
+    private async Task<(TimeOnly StartTime, TimeOnly EndTime)> GetAllowedTimeWindowAsync()
+    {
+        var startTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var endTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var startTime = TimeOnly.Parse("07:00"); // Default: 07:00
+        var endTime = TimeOnly.Parse("23:00"); // Default: 23:00
+        
+        if (startTimeSetting != null && !string.IsNullOrEmpty(startTimeSetting.Value) && 
+            TimeOnly.TryParse(startTimeSetting.Value, out var parsedStartTime))
+        {
+            startTime = parsedStartTime;
+        }
+        
+        if (endTimeSetting != null && !string.IsNullOrEmpty(endTimeSetting.Value) && 
+            TimeOnly.TryParse(endTimeSetting.Value, out var parsedEndTime))
+        {
+            endTime = parsedEndTime;
+        }
+        
+        return (startTime, endTime);
+    }
+
     public record AvailabilityEntryDto(string Date, string Type, string? StartTime, string? EndTime);
     public record AvailabilitySubmissionDto(string MonthKey, DateTime? SubmittedAtUtc, List<AvailabilityEntryDto> Entries);
     public record CreateAvailabilityRequest(string MonthKey, List<AvailabilityEntryDto> Entries);
@@ -344,6 +370,17 @@ public class AvailabilityController : ControllerBase
                 {
                     var hours = minDurationMinutes / 60.0;
                     return $"TimeRange duration must be at least {minDurationMinutes} minutes ({hours} hours)";
+                }
+
+                // Validate time window (from settings)
+                var (allowedStartTime, allowedEndTime) = await GetAllowedTimeWindowAsync();
+                if (startTime < allowedStartTime)
+                {
+                    return $"StartTime ({startTime:HH:mm}) must be at or after the allowed start time ({allowedStartTime:HH:mm})";
+                }
+                if (endTime > allowedEndTime)
+                {
+                    return $"EndTime ({endTime:HH:mm}) must be at or before the allowed end time ({allowedEndTime:HH:mm})";
                 }
             }
         }

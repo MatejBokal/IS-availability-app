@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Antiforgery;
 using AvailabilityCollector.Data;
 using AvailabilityCollector.Models;
+using AvailabilityCollector.Services;
 
 namespace AvailabilityCollector.Controllers;
 
@@ -14,11 +15,13 @@ public class AdminController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly NotificationService _notificationService;
 
-    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
+    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, NotificationService notificationService)
     {
         _context = context;
         _userManager = userManager;
+        _notificationService = notificationService;
     }
 
     [Route("dashboard")]
@@ -690,17 +693,125 @@ public class AdminController : Controller
             enableAdminNotifications = adminNotifSetting;
         }
 
+        // Get allowed time window settings (default to 07:00 - 23:00)
+        var allowedStartTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var allowedStartTime = "07:00"; // Default
+        if (allowedStartTimeSetting != null && !string.IsNullOrEmpty(allowedStartTimeSetting.Value))
+        {
+            allowedStartTime = allowedStartTimeSetting.Value;
+        }
+
+        var allowedEndTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var allowedEndTime = "23:00"; // Default
+        if (allowedEndTimeSetting != null && !string.IsNullOrEmpty(allowedEndTimeSetting.Value))
+        {
+            allowedEndTime = allowedEndTimeSetting.Value;
+        }
+
+        // Get days before lock for reminder setting (default to 5 days)
+        var daysBeforeLockSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "DaysBeforeLockForReminder");
+        
+        var daysBeforeLockForReminder = 5; // Default: 5 days
+        if (daysBeforeLockSetting != null && int.TryParse(daysBeforeLockSetting.Value, out var days))
+        {
+            daysBeforeLockForReminder = days;
+        }
+
         ViewBag.MinTimeRangeHours = minTimeRangeHours;
         ViewBag.AutoLockDayOfMonth = autoLockDay;
         ViewBag.LockAfterInitialSubmission = lockAfterSubmission;
         ViewBag.EnableAdminNotifications = enableAdminNotifications;
+        ViewBag.AllowedStartTime = allowedStartTime;
+        ViewBag.AllowedEndTime = allowedEndTime;
+        ViewBag.DaysBeforeLockForReminder = daysBeforeLockForReminder;
         return View(holidays);
     }
 
     [Route("obvescanje")]
-    public IActionResult Obvescanje()
+    public async Task<IActionResult> Obvescanje()
     {
+        var positions = await _context.Positions
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        
+        ViewBag.Positions = positions;
         return View();
+    }
+
+    [HttpPost]
+    [Route("send-notification")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> SendNotification([FromBody] SendNotificationRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Body))
+        {
+            return Json(new { success = false, error = "Naslov in sporočilo sta obvezna." });
+        }
+
+        var userIds = new List<string>();
+
+        switch (request.RecipientType)
+        {
+            case "all":
+                var allWorkers = await _userManager.GetUsersInRoleAsync("Worker");
+                userIds = allWorkers.Where(u => u.IsActive).Select(u => u.Id).ToList();
+                break;
+
+            case "admins":
+                var admins = await _userManager.GetUsersInRoleAsync("Admin");
+                userIds = admins.Select(u => u.Id).ToList();
+                break;
+
+            case "position":
+                if (string.IsNullOrWhiteSpace(request.Position))
+                {
+                    return Json(new { success = false, error = "Pozicija je obvezna." });
+                }
+                var positionUsers = await _userManager.Users
+                    .Where(u => u.IsActive && u.Position == request.Position)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                userIds = positionUsers;
+                break;
+
+            case "employmentType":
+                if (string.IsNullOrWhiteSpace(request.EmploymentType))
+                {
+                    return Json(new { success = false, error = "Vrsta zaposlitve je obvezna." });
+                }
+                if (!Enum.TryParse<EmploymentType>(request.EmploymentType, out var empType))
+                {
+                    return Json(new { success = false, error = "Neveljavna vrsta zaposlitve." });
+                }
+                var employmentTypeUsers = await _userManager.Users
+                    .Where(u => u.IsActive && u.EmploymentType == empType)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                userIds = employmentTypeUsers;
+                break;
+
+            default:
+                return Json(new { success = false, error = "Neveljavna vrsta prejemnikov." });
+        }
+
+        if (!userIds.Any())
+        {
+            return Json(new { success = false, error = "Ni najdenih prejemnikov za izbrane kriterije." });
+        }
+
+        await _notificationService.CreateCustomNotificationAsync(
+            request.Title,
+            request.Body,
+            userIds
+        );
+
+        return Json(new { success = true, message = $"Obvestilo je bilo poslano {userIds.Count} prejemnikom." });
     }
 
     [HttpPost]
@@ -768,22 +879,8 @@ public class AdminController : Controller
                 enableAdminNotifications = adminNotifSetting;
             }
 
-            if (enableAdminNotifications)
-            {
-                // Get all admin users
-                var adminUsers = await _userManager.GetUsersInRoleAsync("Admin");
-                // TODO: Send in-app notifications to admin users
-                // Implementation for in-app notifications will come later
-            }
-
-            // Get all workers with notifications enabled
-            var workerUsers = await _userManager.GetUsersInRoleAsync("Worker");
-            var workersWithNotifications = workerUsers
-                .Where(u => u.EnableNotifications && u.IsActive)
-                .ToList();
-            
-            // TODO: Send in-app notifications to workers
-            // Implementation for in-app notifications will come later
+            // Create notifications for workers and optionally admins
+            await _notificationService.CreateMonthUnlockedNotificationsAsync(monthKey, enableAdminNotifications);
         }
 
         TempData["SuccessMessage"] = $"Mesec {monthKey} je bil uspešno odklenjen. Zaklenjen bo {lockDateTime:dd.MM.yyyy HH:mm} UTC.";
@@ -920,6 +1017,57 @@ public class AdminController : Controller
         var enableAdminNotifications = request.EnableAdminNotifications ?? false;
         adminNotificationsSetting.Value = enableAdminNotifications.ToString();
         adminNotificationsSetting.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Save AllowedStartTime
+        var allowedStartTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        if (allowedStartTimeSetting == null)
+        {
+            allowedStartTimeSetting = new AppSettings { Key = "AllowedStartTime" };
+            _context.AppSettings.Add(allowedStartTimeSetting);
+        }
+        
+        var allowedStartTime = request.AllowedStartTime ?? "07:00"; // Default: 07:00
+        // Validate time format
+        if (TimeOnly.TryParse(allowedStartTime, out _))
+        {
+            allowedStartTimeSetting.Value = allowedStartTime;
+            allowedStartTimeSetting.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        // Save AllowedEndTime
+        var allowedEndTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        if (allowedEndTimeSetting == null)
+        {
+            allowedEndTimeSetting = new AppSettings { Key = "AllowedEndTime" };
+            _context.AppSettings.Add(allowedEndTimeSetting);
+        }
+        
+        var allowedEndTime = request.AllowedEndTime ?? "23:00"; // Default: 23:00
+        // Validate time format
+        if (TimeOnly.TryParse(allowedEndTime, out _))
+        {
+            allowedEndTimeSetting.Value = allowedEndTime;
+            allowedEndTimeSetting.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        // Save DaysBeforeLockForReminder
+        var daysBeforeLockSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "DaysBeforeLockForReminder");
+        
+        if (daysBeforeLockSetting == null)
+        {
+            daysBeforeLockSetting = new AppSettings { Key = "DaysBeforeLockForReminder" };
+            _context.AppSettings.Add(daysBeforeLockSetting);
+        }
+        
+        var daysBeforeLock = request.DaysBeforeLockForReminder ?? 5; // Default: 5 days
+        daysBeforeLock = Math.Max(1, Math.Min(30, daysBeforeLock)); // Clamp between 1 and 30
+        daysBeforeLockSetting.Value = daysBeforeLock.ToString();
+        daysBeforeLockSetting.UpdatedAtUtc = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -1316,6 +1464,18 @@ public class AddPositionToMatricaRequest
         public int? AutoLockDayOfMonth { get; set; }
         public bool? LockAfterInitialSubmission { get; set; }
         public bool? EnableAdminNotifications { get; set; }
+        public string? AllowedStartTime { get; set; }
+        public string? AllowedEndTime { get; set; }
+        public int? DaysBeforeLockForReminder { get; set; }
+    }
+
+    public class SendNotificationRequest
+    {
+        public string Title { get; set; } = default!;
+        public string Body { get; set; } = default!;
+        public string RecipientType { get; set; } = default!; // "all", "admins", "position", "employmentType"
+        public string? Position { get; set; }
+        public string? EmploymentType { get; set; }
     }
 
 // ViewModel for Availability table

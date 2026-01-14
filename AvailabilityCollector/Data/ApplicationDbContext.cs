@@ -22,6 +22,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
            public DbSet<PositionShift> PositionShifts => Set<PositionShift>();
            public DbSet<ShiftEntry> ShiftEntries => Set<ShiftEntry>();
            public DbSet<AppSettings> AppSettings => Set<AppSettings>();
+           public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,5 +75,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                    .WithMany(ps => ps.ShiftEntries)
                    .HasForeignKey(se => se.PositionShiftId)
                    .OnDelete(DeleteBehavior.Cascade);
+
+               // Notification relationships
+               modelBuilder.Entity<Notification>()
+                   .HasOne<ApplicationUser>()
+                   .WithMany()
+                   .HasForeignKey(n => n.UserId)
+                   .OnDelete(DeleteBehavior.Cascade);
+
+               // Indexes for Notification queries
+               modelBuilder.Entity<Notification>()
+                   .HasIndex(n => n.UserId);
+               
+               modelBuilder.Entity<Notification>()
+                   .HasIndex(n => new { n.UserId, n.IsRead });
     }
 }

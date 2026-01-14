@@ -53,6 +53,18 @@
         <div class="card-body">
             <form id="settingsForm">
                 <div class="mb-3">
+                    <label for="allowedStartTime" class="form-label">Dovoljeni časovni razpon - Začetek:</label>
+                    <input type="time" id="allowedStartTime" class="form-control" value="@ViewBag.AllowedStartTime" required />
+                    <small class="form-text text-muted">Začetni čas dovoljenega časovnega razpona za razpoložljivost (npr. 07:00).</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="allowedEndTime" class="form-label">Dovoljeni časovni razpon - Konec:</label>
+                    <input type="time" id="allowedEndTime" class="form-control" value="@ViewBag.AllowedEndTime" required />
+                    <small class="form-text text-muted">Končni čas dovoljenega časovnega razpona za razpoložljivost (npr. 23:00).</small>
+                </div>
+                
+                <div class="mb-3">
                     <label for="minTimeRangeHours" class="form-label">Minimalna dolžina časovnega razpona (ure):</label>
                     <input type="number" id="minTimeRangeHours" class="form-control" min="1" max="24" step="0.5" value="@ViewBag.MinTimeRangeHours" required />
                     <small class="form-text text-muted">Minimalna dolžina časovnega razpona za "Delno" razpoložljivost (v urah).</small>
@@ -91,14 +103,22 @@
         </div>
     </div>
     
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header">
-            <h5>Druge nastavitve</h5>
+            <h5>Obvestila</h5>
         </div>
         <div class="card-body">
-            <div class="alert alert-info">
-                <p>Dodatne nastavitve (zaklepanje razpoložljivosti, obvestila, opomniki) bodo na voljo kmalu.</p>
-            </div>
+            <form id="notificationSettingsForm">
+                <div class="mb-3">
+                    <label for="daysBeforeLockForReminder" class="form-label">Dnevi pred zaklepanjem za opomnik:</label>
+                    <input type="number" id="daysBeforeLockForReminder" class="form-control" min="1" max="30" step="1" value="@ViewBag.DaysBeforeLockForReminder" required />
+                    <small class="form-text text-muted">Število dni pred zaklepanjem meseca, ko se pošlje prvo obvestilo o zaklepanju. Dnevi pred tem se bodo pošiljali opomniki delavcem, ki še niso oddali razpoložljivosti (npr. 5 = prvo obvestilo 5 dni pred zaklepanjem, opomniki 4, 3, 2, 1 dan pred zaklepanjem).</small>
+                </div>
+                
+                <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                    <i class="bi bi-save"></i> Shrani nastavitve
+                </button>
+            </form>
         </div>
     </div>
 </div>
@@ -180,10 +200,26 @@
         }
 
         async function saveSettings() {
+            const allowedStartTime = document.getElementById('allowedStartTime').value;
+            const allowedEndTime = document.getElementById('allowedEndTime').value;
             const minTimeRangeHours = parseFloat(document.getElementById('minTimeRangeHours').value);
             const autoLockDayOfMonth = parseInt(document.getElementById('autoLockDayOfMonth').value);
             const lockAfterSubmission = document.getElementById('lockAfterInitialSubmission').checked;
             const enableAdminNotifications = document.getElementById('enableAdminNotifications').checked;
+            const daysBeforeLockForReminder = parseInt(document.getElementById('daysBeforeLockForReminder').value);
+            
+            if (!allowedStartTime || !allowedEndTime) {
+                alert('Prosimo, vnesite veljavna začetna in končna časa.');
+                return;
+            }
+
+            // Validate that end time is after start time
+            const startTime = new Date('2000-01-01T' + allowedStartTime);
+            const endTime = new Date('2000-01-01T' + allowedEndTime);
+            if (endTime <= startTime) {
+                alert('Končni čas mora biti za začetnim časom.');
+                return;
+            }
             
             if (isNaN(minTimeRangeHours) || minTimeRangeHours < 1 || minTimeRangeHours > 24) {
                 alert('Prosimo, vnesite veljavno število ur (1-24).');
@@ -195,6 +231,11 @@
                 return;
             }
 
+            if (isNaN(daysBeforeLockForReminder) || daysBeforeLockForReminder < 1 || daysBeforeLockForReminder > 30) {
+                alert('Prosimo, vnesite veljavno število dni (1-30).');
+                return;
+            }
+
             try {
                 const response = await fetch('/admin/save-settings', {
                     method: 'POST',
@@ -202,10 +243,13 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
+                        allowedStartTime: allowedStartTime,
+                        allowedEndTime: allowedEndTime,
                         minTimeRangeHours: minTimeRangeHours,
                         autoLockDayOfMonth: autoLockDayOfMonth,
                         lockAfterInitialSubmission: lockAfterSubmission,
-                        enableAdminNotifications: enableAdminNotifications
+                        enableAdminNotifications: enableAdminNotifications,
+                        daysBeforeLockForReminder: daysBeforeLockForReminder
                     })
                 });
 

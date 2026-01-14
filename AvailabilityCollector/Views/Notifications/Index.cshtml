@@ -1,0 +1,152 @@
+@model List<AvailabilityCollector.Models.Notification>
+@using AvailabilityCollector.Models
+@{
+    ViewData["Title"] = "Obvestila";
+    var unreadCount = Model.Count(n => !n.IsRead);
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Obvestila</h1>
+        @if (unreadCount > 0)
+        {
+            <button type="button" class="btn btn-primary" onclick="markAllAsRead()">
+                <i class="bi bi-check-all"></i> Označi vsa kot prebrana
+            </button>
+        }
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Nimate obvestil.
+        </div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var notification in Model)
+            {
+                <div class="list-group-item @(!notification.IsRead ? "list-group-item-primary" : "")" data-notification-id="@notification.Id">
+                    <div class="d-flex w-100 justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h5 class="mb-1">
+                                @if (!notification.IsRead)
+                                {
+                                    <span class="badge bg-primary me-2">NOVO</span>
+                                }
+                                @notification.Title
+                            </h5>
+                            <p class="mb-1">@notification.Body</p>
+                            <small class="text-muted">
+                                @notification.CreatedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                                @if (!string.IsNullOrEmpty(notification.RelatedMonthKey))
+                                {
+                                    <span> • Mesec: @notification.RelatedMonthKey</span>
+                                }
+                            </small>
+                        </div>
+                        <div class="ms-3">
+                            @if (!notification.IsRead)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="markAsRead(@notification.Id)" title="Označi kot prebrano">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteNotification(@notification.Id)" title="Izbriši">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        async function markAsRead(id) {
+            try {
+                const response = await fetch(`/notifications/mark-read/${id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const item = document.querySelector(`[data-notification-id="${id}"]`);
+                    if (item) {
+                        item.classList.remove('list-group-item-primary');
+                        const badge = item.querySelector('.badge');
+                        if (badge) badge.remove();
+                        const markReadBtn = item.querySelector('button[onclick*="markAsRead"]');
+                        if (markReadBtn) markReadBtn.remove();
+                    }
+                    updateNotificationCount();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function markAllAsRead() {
+            try {
+                const response = await fetch('/notifications/mark-all-read', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function deleteNotification(id) {
+            if (!confirm('Ali ste prepričani, da želite izbrisati to obvestilo?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/notifications/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const item = document.querySelector(`[data-notification-id="${id}"]`);
+                    if (item) {
+                        item.remove();
+                    }
+                    updateNotificationCount();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function updateNotificationCount() {
+            fetch('/api/notifications/unread-count')
+                .then(response => response.json())
+                .then(data => {
+                    const badge = document.getElementById('notificationBadge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.textContent = data.count;
+                            badge.style.display = 'inline';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+    </script>
+}
