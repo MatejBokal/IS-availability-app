@@ -4,26 +4,15 @@ import com.google.gson.annotations.SerializedName
 
 data class LoginRequest(
     @SerializedName("email") val email: String,
-    @SerializedName("password") val password: String,
-    @SerializedName("rememberMe") val rememberMe: Boolean = false
+    @SerializedName("password") val password: String
 )
 
 data class RegisterRequest(
     @SerializedName("email") val email: String,
-    @SerializedName("password") val password: String,
-    @SerializedName("confirmPassword") val confirmPassword: String
+    @SerializedName("password") val password: String
 )
 
 data class AuthResponse(
-    @SerializedName("success") val success: Boolean,
-    @SerializedName("message") val message: String?,
-    @SerializedName("token") val token: String?,
-    @SerializedName("user") val user: UserInfo?
-)
-
-data class UserInfo(
-    @SerializedName("id") val id: String,
-    @SerializedName("email") val email: String,
-    @SerializedName("firstName") val firstName: String?,
-    @SerializedName("lastName") val lastName: String?
+    @SerializedName("token") val token: String,
+    @SerializedName("expiresAtUtc") val expiresAtUtc: String  // ISO 8601 format
 )

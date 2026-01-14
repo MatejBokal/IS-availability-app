@@ -17,6 +17,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import Android.availibityCollector.data.api.VolleyClient
 import Android.availibityCollector.ui.theme.MyApplicationTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -155,8 +157,24 @@ fun LoginScreen(
                             isLoading = false
                         }
                         else -> {
-                            // TODO: Implement actual login logic with API
-                            onLoginSuccess(email)
+                            val volleyClient = VolleyClient.getInstance(LocalContext.current)
+                            volleyClient.login(
+                                email = email,
+                                password = password,
+                                onSuccess = {
+                                    onLoginSuccess(email)
+                                },
+                                onError = { error ->
+                                    errorMessage = when {
+                                        error.contains("401") || error.contains("Unauthorized") -> 
+                                            "Napačno geslo ali e-poštni naslov"
+                                        error.contains("Network") -> 
+                                            "Napaka pri povezavi s strežnikom"
+                                        else -> "Napaka: $error"
+                                    }
+                                    isLoading = false
+                                }
+                            )
                         }
                     }
                 },

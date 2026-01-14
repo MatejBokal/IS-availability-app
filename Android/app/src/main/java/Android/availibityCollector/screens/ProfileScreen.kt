@@ -2,9 +2,12 @@ package Android.availibityCollector.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import android.widget.Toast
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.platform.LocalContext
+import Android.availibityCollector.data.api.VolleyClient
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +25,10 @@ fun ProfileScreen(
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val volleyClient = remember { VolleyClient.getInstance(context) }
+    var enableNotifications by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -114,12 +121,71 @@ fun ProfileScreen(
                 onClick = { /* TODO */ }
             )
             
-            SettingsItem(
-                icon = Icons.Filled.Notifications,
-                title = "Obvestila",
-                subtitle = "Nastavitve obvestil",
-                onClick = { /* TODO */ }
-            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Notifications,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Omogoči obvestila",
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Prejemaj obvestila ob odklenitvi novih mesecev",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = enableNotifications,
+                        onCheckedChange = { newValue ->
+                            enableNotifications = newValue
+                            isSaving = true
+                            volleyClient.updateNotificationPreference(
+                                enableNotifications = newValue,
+                                onSuccess = {
+                                    isSaving = false
+                                    Toast.makeText(
+                                        context,
+                                        "Nastavitve so bile shranjene",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onError = { error ->
+                                    isSaving = false
+                                    enableNotifications = !newValue
+                                    Toast.makeText(
+                                        context,
+                                        "Napaka: $error",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        },
+                        enabled = !isSaving
+                    )
+                }
+            }
             
             Spacer(modifier = Modifier.height(24.dp))
             
