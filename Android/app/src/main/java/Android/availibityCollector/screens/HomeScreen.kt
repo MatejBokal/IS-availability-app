@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -26,6 +27,7 @@ fun HomeScreen(
     onLogoutClick: () -> Unit,
     onProfileClick: () -> Unit,
     onAvailabilityClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onWorkersClick: () -> Unit
 ) {
     Scaffold(
@@ -118,10 +120,20 @@ fun HomeScreen(
             
             // Availability card
             NavigationCard(
-                title = "Razpoložljivost",
+                title = "Oddaj razpoložljivost",
                 description = "Oddajte svojo razpoložljivost za urnik",
                 icon = Icons.Filled.DateRange,
                 onClick = onAvailabilityClick
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // History card
+            NavigationCard(
+                title = "Zgodovina",
+                description = "Preglejte pretekle razpoložljivosti",
+                icon = Icons.Filled.History,
+                onClick = onHistoryClick
             )
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -210,6 +222,7 @@ fun HomeScreenPreview() {
             onLogoutClick = {},
             onProfileClick = {},
             onAvailabilityClick = {},
+            onHistoryClick = {},
             onWorkersClick = {}
         )
     }

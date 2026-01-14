@@ -19,6 +19,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import Android.availibityCollector.data.api.VolleyClient
+import androidx.compose.ui.platform.LocalContext
 import Android.availibityCollector.ui.theme.MyApplicationTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -229,8 +232,29 @@ fun RegisterScreen(
                                 errorMessage = passwordError
                                 isLoading = false
                             } else {
-                                // TODO: Implement actual registration logic with API
-                                onRegisterSuccess()
+                                val volleyClient = VolleyClient.getInstance(LocalContext.current)
+                                volleyClient.register(
+                                    email = email,
+                                    password = password,
+                                    onSuccess = { message ->
+                                        Toast.makeText(
+                                            LocalContext.current,
+                                            message,
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        onRegisterSuccess()
+                                    },
+                                    onError = { error ->
+                                        errorMessage = when {
+                                            error.contains("400") -> 
+                                                "E-poštni naslov je že v uporabi ali neveljaven"
+                                            error.contains("Network") -> 
+                                                "Napaka pri povezavi s strežnikom"
+                                            else -> "Napaka: $error"
+                                        }
+                                        isLoading = false
+                                    }
+                                )
                             }
                         }
                     }
