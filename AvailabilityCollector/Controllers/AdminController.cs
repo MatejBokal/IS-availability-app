@@ -208,10 +208,265 @@ public class AdminController : Controller
     }
 
     [Route("analiza/{monthKey}")]
-    public IActionResult Analiza(string monthKey)
+    public async Task<IActionResult> Analiza(string monthKey)
     {
+        // Validate monthKey format
+        if (!System.Text.RegularExpressions.Regex.IsMatch(monthKey, @"^\d{2}-\d{4}$"))
+        {
+            return NotFound();
+        }
+
+        // Parse month
+        var monthParts = monthKey.Split('-');
+        var monthNum = int.Parse(monthParts[0]);
+        var year = int.Parse(monthParts[1]);
+        var monthStart = new DateOnly(year, monthNum, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        var daysInMonth = monthEnd.Day;
+
+        // Get shift matrix
+        var shiftMatrix = await _context.ShiftMatrices
+            .Include(m => m.PositionShifts)
+                .ThenInclude(ps => ps.Position)
+            .Include(m => m.PositionShifts)
+                .ThenInclude(ps => ps.ShiftEntries)
+            .FirstOrDefaultAsync();
+
+        if (shiftMatrix == null)
+        {
+            ViewBag.MonthKey = monthKey;
+            ViewBag.Error = "Matrica izmen ni nastavljena.";
+            return View();
+        }
+
+        // Get month
+        var month = await _context.AvailabilityMonths
+            .FirstOrDefaultAsync(m => m.MonthKey == monthKey);
+
+        // Get all availability submissions for this month
+        var submissions = new List<AvailabilitySubmission>();
+        if (month != null)
+        {
+            submissions = await _context.AvailabilitySubmissions
+                .Include(s => s.Entries)
+                .Where(s => s.AvailabilityMonthId == month.Id)
+                .ToListAsync();
+        }
+
+        // Get all employees with Worker role
+        var allWorkers = await _userManager.GetUsersInRoleAsync("Worker");
+        var employees = allWorkers.Where(u => u.IsActive).ToList();
+
+        // Get holidays
+        var holidays = await _context.Holidays
+            .Where(h => h.Year == year)
+            .ToListAsync();
+        var holidayDates = holidays.Select(h => h.Date).ToHashSet();
+
+        // Create day name mapping (Slovenian to DayOfWeek)
+        var dayNameMap = new Dictionary<string, DayOfWeek>
+        {
+            { "pon", DayOfWeek.Monday },
+            { "tor", DayOfWeek.Tuesday },
+            { "sre", DayOfWeek.Wednesday },
+            { "cet", DayOfWeek.Thursday },
+            { "pet", DayOfWeek.Friday },
+            { "sob", DayOfWeek.Saturday },
+            { "ned", DayOfWeek.Sunday }
+        };
+
+        // Build availability lookup by employee ID and date
+        var availabilityByEmployeeAndDate = new Dictionary<string, Dictionary<DateOnly, AvailabilityEntry>>();
+        foreach (var submission in submissions)
+        {
+            if (!availabilityByEmployeeAndDate.ContainsKey(submission.UserId))
+            {
+                availabilityByEmployeeAndDate[submission.UserId] = new Dictionary<DateOnly, AvailabilityEntry>();
+            }
+            foreach (var entry in submission.Entries)
+            {
+                availabilityByEmployeeAndDate[submission.UserId][entry.Date] = entry;
+            }
+        }
+
+        // Analyze each day
+        var uncoveredShifts = new List<UncoveredShiftViewModel>();
+        var daysWithInsufficientCoverage = new HashSet<DateOnly>();
+        var totalRequiredShifts = 0;
+        var totalUncoveredShifts = 0;
+
+        for (int day = 1; day <= daysInMonth; day++)
+        {
+            var date = new DateOnly(year, monthNum, day);
+            var dayOfWeek = date.DayOfWeek;
+            var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+            var isHoliday = holidayDates.Contains(date);
+
+            // Skip weekends and holidays for shift analysis (shifts typically don't run on weekends/holidays)
+            // But we'll still check if shifts are defined for these days
+
+            // Find shifts that apply to this day
+            var dayNameSlovenian = dayNameMap.FirstOrDefault(kvp => kvp.Value == dayOfWeek).Key ?? "";
+            var applicableShifts = shiftMatrix.PositionShifts
+                .SelectMany(ps => ps.ShiftEntries
+                    .Where(se => se.Days.Split(',').Select(d => d.Trim().ToLower()).Contains(dayNameSlovenian))
+                    .Select(se => new { PositionShift = ps, ShiftEntry = se }))
+                .ToList();
+
+            totalRequiredShifts += applicableShifts.Count;
+
+            var totalRequiredPeopleForDay = 0;
+            var availablePeopleForDay = new HashSet<string>();
+
+            // Analyze each shift
+            foreach (var shift in applicableShifts)
+            {
+                var positionId = shift.PositionShift.PositionId;
+                var shiftTimeParts = shift.ShiftEntry.ShiftTime.Split('-');
+                var shiftStartTime = TimeOnly.Parse(shiftTimeParts[0].Trim());
+                var shiftEndTime = TimeOnly.Parse(shiftTimeParts[1].Trim());
+                var requiredPeople = shift.ShiftEntry.NumberOfPeople;
+
+                totalRequiredPeopleForDay += requiredPeople;
+
+                // Find employees who can work this shift
+                var positionName = shift.PositionShift.Position.Name;
+                var availableEmployees = new List<ApplicationUser>();
+                foreach (var employee in employees)
+                {
+                    // Check if employee's position matches (primary or secondary)
+                    var matchesPosition = false;
+                    if (employee.Position != null && employee.Position == positionName)
+                    {
+                        matchesPosition = true;
+                    }
+                    if (!matchesPosition && !string.IsNullOrEmpty(employee.SecondaryPositions))
+                    {
+                        var secondaryPositions = employee.SecondaryPositions.Split(',').Select(p => p.Trim());
+                        if (secondaryPositions.Contains(positionName))
+                        {
+                            matchesPosition = true;
+                        }
+                    }
+
+                    if (!matchesPosition) continue;
+
+                    // Check availability
+                    if (availabilityByEmployeeAndDate.TryGetValue(employee.Id, out var employeeAvailability) &&
+                        employeeAvailability.TryGetValue(date, out var availabilityEntry))
+                    {
+                        var canWork = false;
+                        if (availabilityEntry.Type == AvailabilityType.FullDay)
+                        {
+                            canWork = true;
+                        }
+                        else if (availabilityEntry.Type == AvailabilityType.TimeRange &&
+                                 availabilityEntry.StartTime.HasValue && availabilityEntry.EndTime.HasValue)
+                        {
+                            // Check if time ranges overlap
+                            var availStart = availabilityEntry.StartTime.Value;
+                            var availEnd = availabilityEntry.EndTime.Value;
+                            // Overlap if: availStart < shiftEndTime && availEnd > shiftStartTime
+                            if (availStart < shiftEndTime && availEnd > shiftStartTime)
+                            {
+                                canWork = true;
+                            }
+                        }
+
+                        if (canWork)
+                        {
+                            availableEmployees.Add(employee);
+                            availablePeopleForDay.Add(employee.Id);
+                        }
+                    }
+                }
+
+                var availableCount = availableEmployees.Count;
+                if (availableCount < requiredPeople)
+                {
+                    totalUncoveredShifts++;
+                    uncoveredShifts.Add(new UncoveredShiftViewModel
+                    {
+                        Date = date,
+                        PositionName = shift.PositionShift.Position.Name,
+                        ShiftTime = shift.ShiftEntry.ShiftTime,
+                        RequiredPeople = requiredPeople,
+                        AvailablePeople = availableCount,
+                        Gap = requiredPeople - availableCount
+                    });
+                }
+            }
+
+            // Check if total required people > total available people for the day
+            if (totalRequiredPeopleForDay > availablePeopleForDay.Count)
+            {
+                daysWithInsufficientCoverage.Add(date);
+            }
+        }
+
+        // Analyze regular employees
+        var regularEmployees = employees.Where(e => e.EmploymentType == EmploymentType.RednoZaposleni).ToList();
+        var expectedDays = daysInMonth;
+        // Subtract weekends
+        for (int day = 1; day <= daysInMonth; day++)
+        {
+            var date = new DateOnly(year, monthNum, day);
+            if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+            {
+                expectedDays--;
+            }
+        }
+        // Subtract holidays
+        expectedDays -= holidays.Count(h => h.Date >= monthStart && h.Date <= monthEnd);
+
+        var regularEmployeesWithInsufficientAvailability = new List<RegularEmployeeAvailabilityViewModel>();
+        foreach (var employee in regularEmployees)
+        {
+            var availableDays = 0;
+            if (availabilityByEmployeeAndDate.TryGetValue(employee.Id, out var employeeAvailability))
+            {
+                foreach (var entry in employeeAvailability.Values)
+                {
+                    if (entry.Date >= monthStart && entry.Date <= monthEnd &&
+                        (entry.Type == AvailabilityType.FullDay || entry.Type == AvailabilityType.TimeRange))
+                    {
+                        availableDays++;
+                    }
+                }
+            }
+
+            if (availableDays < expectedDays)
+            {
+                regularEmployeesWithInsufficientAvailability.Add(new RegularEmployeeAvailabilityViewModel
+                {
+                    EmployeeId = employee.Id,
+                    EmployeeName = $"{employee.FirstName} {employee.LastName}".Trim(),
+                    Position = employee.Position ?? "Ni dodeljeno",
+                    ExpectedDays = expectedDays,
+                    AvailableDays = availableDays,
+                    Gap = expectedDays - availableDays
+                });
+            }
+        }
+
+        // Calculate coverage percentage
+        var coveragePercentage = totalRequiredShifts > 0
+            ? Math.Round((double)(totalRequiredShifts - totalUncoveredShifts) / totalRequiredShifts * 100, 1)
+            : 100.0;
+
+        var viewModel = new AnalyticsViewModel
+        {
+            MonthKey = monthKey,
+            TotalRequiredShifts = totalRequiredShifts,
+            TotalUncoveredShifts = totalUncoveredShifts,
+            CoveragePercentage = coveragePercentage,
+            DaysWithInsufficientCoverage = daysWithInsufficientCoverage.OrderBy(d => d).ToList(),
+            UncoveredShifts = uncoveredShifts.OrderBy(s => s.Date).ThenBy(s => s.PositionName).ToList(),
+            RegularEmployeesWithInsufficientAvailability = regularEmployeesWithInsufficientAvailability.OrderBy(e => e.EmployeeName).ToList()
+        };
+
         ViewBag.MonthKey = monthKey;
-        return View();
+        return View(viewModel);
     }
 
     [Route("zaposleni")]
@@ -1069,4 +1324,36 @@ public class AvailabilityTableViewModel
     public List<ApplicationUser> Employees { get; set; } = new();
     public List<AvailabilitySubmission> Submissions { get; set; } = new();
     public string MonthKey { get; set; } = default!;
+}
+
+// ViewModels for Analytics
+public class AnalyticsViewModel
+{
+    public string MonthKey { get; set; } = default!;
+    public int TotalRequiredShifts { get; set; }
+    public int TotalUncoveredShifts { get; set; }
+    public double CoveragePercentage { get; set; }
+    public List<DateOnly> DaysWithInsufficientCoverage { get; set; } = new();
+    public List<UncoveredShiftViewModel> UncoveredShifts { get; set; } = new();
+    public List<RegularEmployeeAvailabilityViewModel> RegularEmployeesWithInsufficientAvailability { get; set; } = new();
+}
+
+public class UncoveredShiftViewModel
+{
+    public DateOnly Date { get; set; }
+    public string PositionName { get; set; } = default!;
+    public string ShiftTime { get; set; } = default!;
+    public int RequiredPeople { get; set; }
+    public int AvailablePeople { get; set; }
+    public int Gap { get; set; }
+}
+
+public class RegularEmployeeAvailabilityViewModel
+{
+    public string EmployeeId { get; set; } = default!;
+    public string EmployeeName { get; set; } = default!;
+    public string Position { get; set; } = default!;
+    public int ExpectedDays { get; set; }
+    public int AvailableDays { get; set; }
+    public int Gap { get; set; }
 }
