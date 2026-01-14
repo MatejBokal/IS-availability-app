@@ -183,10 +183,16 @@ public class AdminController : Controller
             .Where(h => h.Year == year)
             .ToListAsync();
 
+        // Get filter parameters
+        var selectedPosition = Request.Query["position"].ToString();
+        var selectedEmploymentType = Request.Query["employmentType"].ToString();
+
         ViewBag.MonthKey = monthKey;
         ViewBag.Month = month;
         ViewBag.Positions = positions;
         ViewBag.Holidays = holidays;
+        ViewBag.SelectedPositionFilter = selectedPosition;
+        ViewBag.SelectedEmploymentTypeFilter = selectedEmploymentType;
         ViewBag.EmploymentTypes = Enum.GetValues(typeof(EmploymentType))
             .Cast<EmploymentType>()
             .ToList();

@@ -56,16 +56,21 @@
                     </thead>
                     <tbody>
                         @{
+                            // Calculate how many days to pad before the first day of the month
+                            var firstDayOfWeek = (int)firstDay.DayOfWeek;
+                            // Convert to Monday=0, Sunday=6 format (Slovenian week starts Monday)
+                            var dayOffset = firstDayOfWeek == 0 ? 6 : firstDayOfWeek - 1;
+                            
+                            // Add padding cells for days before the first day
+                            @:<tr>
+                            for (int i = 0; i < dayOffset; i++)
+                            {
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
+                            }
+                            
                             var currentDate = firstDay;
-                            var weekRow = 0;
                             while (currentDate <= firstDay.AddMonths(1).AddDays(-1))
                             {
-                                if (currentDate.DayOfWeek == DayOfWeek.Monday || weekRow == 0)
-                                {
-                                    @:<tr>
-                                    weekRow++;
-                                }
-                                
                                 var dayNum = currentDate.Day;
                                 var isHoliday = holidayDates.Contains(currentDate);
                                 var dayOfWeek = currentDate.DayOfWeek;
@@ -91,20 +96,20 @@
                                     switch (entry.Type)
                                     {
                                         case AvailabilityType.FullDay:
-                                            cellClass += " bg-success text-white";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div><small>✓</small>";
+                                            cellClass += " bg-success bg-opacity-50";
+                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
                                             tooltip = "Na voljo cel dan";
                                             break;
                                         case AvailabilityType.TimeRange:
-                                            cellClass += " bg-warning";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div><small>◐</small>";
+                                            cellClass += " bg-warning bg-opacity-50";
+                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
                                             var timeRange = (entry.StartTime?.ToString("HH:mm") ?? "") + "-" + (entry.EndTime?.ToString("HH:mm") ?? "");
                                             cellContent += "<div style='font-size: 0.7em; margin-top: 2px;' class='time-display'>" + timeRange + "</div>";
                                             tooltip = $"Delno: {timeRange}";
                                             break;
                                         case AvailabilityType.Unavailable:
-                                            cellClass += " bg-danger text-white";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div><small>✗</small>";
+                                            cellClass += " bg-danger bg-opacity-50";
+                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
                                             tooltip = "Ni na voljo";
                                             break;
                                     }
@@ -128,24 +133,24 @@
                                     @Html.Raw(cellContent)
                                 </td>
                                 
+                                // Start new row on Sunday (end of week)
                                 if (dayOfWeek == DayOfWeek.Sunday)
                                 {
                                     @:</tr>
+                                    @:<tr>
                                 }
                                 
                                 currentDate = currentDate.AddDays(1);
                             }
                             
-                            // Close last row if needed
-                            if (currentDate.DayOfWeek != DayOfWeek.Monday)
+                            // Close last row - add padding cells for remaining days in the week
+                            var lastDayOfWeek = (int)currentDate.AddDays(-1).DayOfWeek;
+                            var lastDayOffset = lastDayOfWeek == 0 ? 0 : 7 - lastDayOfWeek;
+                            for (int i = 0; i < lastDayOffset; i++)
                             {
-                                var remainingDays = 7 - (int)currentDate.AddDays(-1).DayOfWeek;
-                                for (int i = 0; i < remainingDays; i++)
-                                {
-                                    <td class="text-muted bg-light" style="min-height: 60px;"></td>
-                                }
-                                @:</tr>
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
                             }
+                            @:</tr>
                         }
                     </tbody>
                 </table>

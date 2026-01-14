@@ -65,16 +65,21 @@
                     </thead>
                     <tbody id="calendarBody">
                         @{
+                            // Calculate how many days to pad before the first day of the month
+                            var firstDayOfWeek = (int)firstDay.DayOfWeek;
+                            // Convert to Monday=0, Sunday=6 format (Slovenian week starts Monday)
+                            var dayOffset = firstDayOfWeek == 0 ? 6 : firstDayOfWeek - 1;
+                            
+                            // Add padding cells for days before the first day
+                            @:<tr>
+                            for (int i = 0; i < dayOffset; i++)
+                            {
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
+                            }
+                            
                             var currentDate = firstDay;
-                            var weekRow = 0;
                             while (currentDate <= firstDay.AddMonths(1).AddDays(-1))
                             {
-                                if (currentDate.DayOfWeek == DayOfWeek.Monday || weekRow == 0)
-                                {
-                                    @:<tr>
-                                    weekRow++;
-                                }
-                                
                                 var dayNum = currentDate.Day;
                                 var isHoliday = holidayDates.Contains(currentDate);
                                 var dayOfWeek = currentDate.DayOfWeek;
@@ -97,13 +102,13 @@
                                     switch (entry.Type)
                                     {
                                         case AvailabilityType.FullDay:
-                                            cellClass += " bg-success text-white";
+                                            cellClass += " bg-success bg-opacity-50";
                                             break;
                                         case AvailabilityType.TimeRange:
-                                            cellClass += " bg-warning";
+                                            cellClass += " bg-warning bg-opacity-50";
                                             break;
                                         case AvailabilityType.Unavailable:
-                                            cellClass += " bg-danger text-white";
+                                            cellClass += " bg-danger bg-opacity-50";
                                             break;
                                     }
                                 }
@@ -119,17 +124,8 @@
                                         <div style="font-weight: bold;">@dayNum</div>
                                         @if (entry != null)
                                         {
-                                            if (entry.Type == AvailabilityType.FullDay)
+                                            if (entry.Type == AvailabilityType.TimeRange)
                                             {
-                                                <small>✓</small>
-                                            }
-                                            else if (entry.Type == AvailabilityType.Unavailable)
-                                            {
-                                                <small>✗</small>
-                                            }
-                                            else if (entry.Type == AvailabilityType.TimeRange)
-                                            {
-                                                <small>◐</small>
                                                 <div style="font-size: 0.7em; margin-top: 2px;" class="time-display" data-time="@(entry.StartTime?.ToString("HH:mm") + "-" + entry.EndTime?.ToString("HH:mm"))">
                                                     @(entry.StartTime?.ToString("HH:mm") ?? "")-@(entry.EndTime?.ToString("HH:mm") ?? "")
                                                 </div>
@@ -143,24 +139,24 @@
                                     }
                                 </td>
                                 
+                                // Start new row on Sunday (end of week)
                                 if (dayOfWeek == DayOfWeek.Sunday)
                                 {
                                     @:</tr>
+                                    @:<tr>
                                 }
                                 
                                 currentDate = currentDate.AddDays(1);
                             }
                             
-                            // Close last row if needed
-                            if (currentDate.DayOfWeek != DayOfWeek.Monday)
+                            // Close last row - add padding cells for remaining days in the week
+                            var lastDayOfWeek = (int)currentDate.AddDays(-1).DayOfWeek;
+                            var lastDayOffset = lastDayOfWeek == 0 ? 0 : 7 - lastDayOfWeek;
+                            for (int i = 0; i < lastDayOffset; i++)
                             {
-                                var remainingDays = 7 - (int)currentDate.AddDays(-1).DayOfWeek;
-                                for (int i = 0; i < remainingDays; i++)
-                                {
-                                    <td class="text-muted bg-light" style="min-height: 60px;"></td>
-                                }
-                                @:</tr>
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
                             }
+                            @:</tr>
                         }
                     </tbody>
                 </table>
@@ -227,7 +223,7 @@
             <strong>Legenda:</strong>
             <div class="d-flex flex-wrap gap-3 mt-2">
                 <div><span class="badge bg-success text-white me-1">✓</span> Na voljo</div>
-                <div><span class="badge bg-warning me-1">◐</span> Delno</div>
+                <div><span class="badge bg-warning me-1"><i class="bi bi-clock"></i></span> Delno</div>
                 <div><span class="badge bg-danger text-white me-1">✗</span> Ni na voljo</div>
                 <div><span class="text-muted">Sivo</span> Vikend/Praznik</div>
             </div>
@@ -413,7 +409,7 @@
             if (!cell) return;
             
             // Remove existing status classes
-            cell.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'text-white');
+            cell.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-opacity-50', 'text-white');
             
             const entry = availability[dateStr];
             if (!entry) {
@@ -424,14 +420,11 @@
             let content = `<div style="font-weight: bold;">${cell.getAttribute('data-day')}</div>`;
             
             if (entry.type === 'FullDay') {
-                cell.classList.add('bg-success', 'text-white');
-                content += '<small>✓</small>';
+                cell.classList.add('bg-success', 'bg-opacity-50');
             } else if (entry.type === 'Unavailable') {
-                cell.classList.add('bg-danger', 'text-white');
-                content += '<small>✗</small>';
+                cell.classList.add('bg-danger', 'bg-opacity-50');
             } else if (entry.type === 'TimeRange') {
-                cell.classList.add('bg-warning');
-                content += '<small>◐</small>';
+                cell.classList.add('bg-warning', 'bg-opacity-50');
                 content += `<div style="font-size: 0.7em; margin-top: 2px;" class="time-display">${entry.startTime}-${entry.endTime}</div>`;
             }
             
