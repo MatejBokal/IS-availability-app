@@ -43,12 +43,9 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors);
 
-        // Default role = Worker (seed roles first!)
-        await _userManager.AddToRoleAsync(user, "Worker");
-
-        // Optionally auto-login and return token
-        var token = CreateJwt(user, new[] { "Worker" });
-        return Ok(token);
+        // No automatic role assignment - admin must assign role before user can access the system
+        // Return success without token - user needs to wait for admin approval
+        return Ok(new { message = "Registration successful. Please wait for admin to assign your role." });
     }
 
     [HttpPost("login")]
