@@ -148,9 +148,30 @@ public class WorkerController : Controller
             allowedEndTime = allowedEndTimeSetting.Value;
         }
         
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // Determine if editing is disabled
+        // Editing is disabled if:
+        // 1. Month is locked, OR
+        // 2. LockAfterSubmission is enabled AND submission exists
+        var isEditingDisabled = !month.IsUnlocked || 
+                               (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow) ||
+                               (lockAfterSubmission && submission != null && submission.SubmittedAtUtc != default);
+
         ViewBag.MinDurationMinutes = minDurationMinutes;
         ViewBag.AllowedStartTime = allowedStartTime;
         ViewBag.AllowedEndTime = allowedEndTime;
+        ViewBag.IsEditingDisabled = isEditingDisabled;
+        ViewBag.LockAfterSubmission = lockAfterSubmission;
+        ViewBag.HasExistingSubmission = submission != null && submission.SubmittedAtUtc != default;
 
         return View();
     }

@@ -10,6 +10,9 @@
     var allowedStartTime = ViewBag.AllowedStartTime as string ?? "07:00";
     var allowedEndTime = ViewBag.AllowedEndTime as string ?? "23:00";
     var monthKey = ViewBag.MonthKey as string;
+    var isEditingDisabled = ViewBag.IsEditingDisabled as bool? ?? false;
+    var lockAfterSubmission = ViewBag.LockAfterSubmission as bool? ?? false;
+    var hasExistingSubmission = ViewBag.HasExistingSubmission as bool? ?? false;
     
     var isLocked = !month.IsUnlocked || (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow);
     
@@ -46,6 +49,12 @@
     {
         <div class="alert alert-warning">
             <i class="bi bi-lock"></i> Ta mesec je zaklenjen in ga ni mogoče urejati. Samo pregled je na voljo.
+        </div>
+    }
+    else if (isEditingDisabled && hasExistingSubmission)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Urejanje oddane razpoložljivosti ni dovoljeno po nastavitvah administratorja. Samo pregled je na voljo.
         </div>
     }
 
@@ -119,8 +128,8 @@
                                     data-date="@currentDate.ToString("yyyy-MM-dd")"
                                     data-day="@dayNum"
                                     data-month="@(isCurrentMonth ? "current" : "other")"
-                                    onclick="@(!isLocked && isCurrentMonth ? "toggleDateSelection('" + currentDate.ToString("yyyy-MM-dd") + "')" : "")"
-                                    style="cursor: @(isLocked || !isCurrentMonth ? "default" : "pointer"); min-height: 60px; position: relative;">
+                                    onclick="@(!isEditingDisabled && isCurrentMonth ? "toggleDateSelection('" + currentDate.ToString("yyyy-MM-dd") + "')" : "")"
+                                    style="cursor: @(isEditingDisabled || !isCurrentMonth ? "default" : "pointer"); min-height: 60px; position: relative;">
                                     @if (isCurrentMonth)
                                     {
                                         <div style="font-weight: bold;">@dayNum</div>
@@ -236,7 +245,7 @@
     </div>
 
     <!-- Submit Button -->
-    @if (!isLocked)
+    @if (!isEditingDisabled)
     {
         <div class="d-flex justify-content-end mb-3">
             <button type="button" class="btn btn-primary btn-lg" onclick="submitAvailability()" id="submitBtn">
@@ -266,6 +275,7 @@
         const allowedEndTime = '@allowedEndTime';
         const submissionId = @(submission?.Id ?? 0);
         const isLocked = @(isLocked ? "true" : "false");
+        const isEditingDisabled = @(isEditingDisabled ? "true" : "false");
         
         let selectedDates = new Set();
         let availability = {};
@@ -287,7 +297,7 @@
         }
 
         function toggleDateSelection(dateStr) {
-            if (isLocked) return;
+            if (isEditingDisabled) return;
             
             const cell = document.querySelector(`[data-date="${dateStr}"]`);
             if (!cell || cell.getAttribute('data-month') !== 'current') return;
@@ -455,8 +465,8 @@
         }
 
         async function submitAvailability() {
-            if (isLocked) {
-                showToast('Ta mesec je zaklenjen in ga ni mogoče urejati.', 'error');
+            if (isEditingDisabled) {
+                showToast('Urejanje ni dovoljeno. Ta mesec je zaklenjen ali pa je urejanje po oddaji onemogočeno.', 'error');
                 return;
             }
             
