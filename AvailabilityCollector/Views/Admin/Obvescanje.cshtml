@@ -1,7 +1,10 @@
 @using AvailabilityCollector.Models
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
 @{
     ViewData["Title"] = "Obveščanje";
     var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
+    var users = ViewBag.Users as List<ApplicationUser> ?? new List<ApplicationUser>();
     var employmentTypes = Enum.GetValues(typeof(EmploymentType)).Cast<EmploymentType>().ToList();
 }
 
@@ -50,6 +53,12 @@
                             Po vrsti zaposlitve
                         </label>
                     </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="recipientType" id="recipientUser" value="user">
+                        <label class="form-check-label" for="recipientUser">
+                            Posamezen uporabnik
+                        </label>
+                    </div>
                 </div>
                 
                 <div class="mb-3" id="positionSelect" style="display: none;">
@@ -73,6 +82,26 @@
                     </select>
                 </div>
                 
+                <div class="mb-3" id="userSelect" style="display: none;">
+                    <label for="selectedUser" class="form-label">Uporabnik:</label>
+                    <select id="selectedUser" class="form-select">
+                        <option value="">Izberite uporabnika</option>
+                        @foreach (var user in users)
+                        {
+                            var displayName = $"{user.FirstName ?? ""} {user.LastName ?? ""}".Trim();
+                            if (string.IsNullOrEmpty(displayName))
+                            {
+                                displayName = user.Email ?? "Neznan uporabnik";
+                            }
+                            else
+                            {
+                                displayName += $" ({user.Email})";
+                            }
+                            <option value="@user.Id">@displayName</option>
+                        }
+                    </select>
+                </div>
+                
                 <button type="button" class="btn btn-primary" onclick="sendNotification()">
                     <i class="bi bi-send"></i> Pošlji obvestilo
                 </button>
@@ -87,16 +116,24 @@
             radio.addEventListener('change', function() {
                 const positionSelect = document.getElementById('positionSelect');
                 const employmentTypeSelect = document.getElementById('employmentTypeSelect');
+                const userSelect = document.getElementById('userSelect');
                 
                 if (this.value === 'position') {
                     positionSelect.style.display = 'block';
                     employmentTypeSelect.style.display = 'none';
+                    userSelect.style.display = 'none';
                 } else if (this.value === 'employmentType') {
                     positionSelect.style.display = 'none';
                     employmentTypeSelect.style.display = 'block';
+                    userSelect.style.display = 'none';
+                } else if (this.value === 'user') {
+                    positionSelect.style.display = 'none';
+                    employmentTypeSelect.style.display = 'none';
+                    userSelect.style.display = 'block';
                 } else {
                     positionSelect.style.display = 'none';
                     employmentTypeSelect.style.display = 'none';
+                    userSelect.style.display = 'none';
                 }
             });
         });
@@ -113,6 +150,7 @@
             
             let selectedPosition = null;
             let selectedEmploymentType = null;
+            let selectedUserId = null;
             
             if (recipientType === 'position') {
                 selectedPosition = document.getElementById('selectedPosition').value;
@@ -124,6 +162,12 @@
                 selectedEmploymentType = document.getElementById('selectedEmploymentType').value;
                 if (!selectedEmploymentType) {
                     alert('Prosimo, izberite vrsto zaposlitve.');
+                    return;
+                }
+            } else if (recipientType === 'user') {
+                selectedUserId = document.getElementById('selectedUser').value;
+                if (!selectedUserId) {
+                    alert('Prosimo, izberite uporabnika.');
                     return;
                 }
             }
@@ -139,7 +183,8 @@
                         body: body,
                         recipientType: recipientType,
                         position: selectedPosition,
-                        employmentType: selectedEmploymentType
+                        employmentType: selectedEmploymentType,
+                        userId: selectedUserId
                     })
                 });
                 
@@ -150,6 +195,9 @@
                     document.getElementById('sendNotificationForm').reset();
                     document.getElementById('positionSelect').style.display = 'none';
                     document.getElementById('employmentTypeSelect').style.display = 'none';
+                    document.getElementById('userSelect').style.display = 'none';
+                    // Reset radio button to "all"
+                    document.getElementById('recipientAll').checked = true;
                 } else {
                     alert('Napaka: ' + (result.error || 'Neznana napaka'));
                 }

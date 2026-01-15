@@ -29,6 +29,21 @@ fun ProfileScreen(
     val volleyClient = remember { VolleyClient.getInstance(context) }
     var enableNotifications by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var isLoadingNotification by remember { mutableStateOf(true) }
+    
+    // Load notification preference from backend
+    LaunchedEffect(Unit) {
+        volleyClient.getNotificationPreference(
+            onSuccess = { enabled ->
+                enableNotifications = enabled
+                isLoadingNotification = false
+            },
+            onError = { error ->
+                isLoadingNotification = false
+                Toast.makeText(context, "Napaka pri nalaganju nastavitev: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -91,35 +106,13 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             Text(
-                text = "Upravljanje računa",
+                text = "Nastavitve",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             
             Spacer(modifier = Modifier.height(8.dp))
-            
-            // Settings options
-            SettingsItem(
-                icon = Icons.Filled.Person,
-                title = "Profil",
-                subtitle = "Uredi osebne podatke",
-                onClick = { /* TODO */ }
-            )
-            
-            SettingsItem(
-                icon = Icons.Filled.Lock,
-                title = "Spremeni geslo",
-                subtitle = "Posodobi geslo za prijavo",
-                onClick = { /* TODO */ }
-            )
-            
-            SettingsItem(
-                icon = Icons.Filled.Email,
-                title = "E-pošta",
-                subtitle = "Spremeni e-poštni naslov",
-                onClick = { /* TODO */ }
-            )
             
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -150,7 +143,7 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "Prejemaj obvestila ob odklenitvi novih mesecev",
+                                text = "Prejemaj obvestila",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -182,35 +175,10 @@ fun ProfileScreen(
                                 }
                             )
                         },
-                        enabled = !isSaving
+                        enabled = !isSaving && !isLoadingNotification
                     )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text(
-                text = "O aplikaciji",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            SettingsItem(
-                icon = Icons.Filled.Info,
-                title = "O aplikaciji",
-                subtitle = "Verzija 1.0.0",
-                onClick = { /* TODO */ }
-            )
-            
-            SettingsItem(
-                icon = Icons.Filled.Description,
-                title = "Pravila zasebnosti",
-                subtitle = "Preberite naša pravila",
-                onClick = { /* TODO */ }
-            )
             
             Spacer(modifier = Modifier.weight(1f))
             

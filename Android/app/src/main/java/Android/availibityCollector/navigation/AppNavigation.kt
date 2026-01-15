@@ -23,7 +23,6 @@ sealed class Screen(val route: String) {
     object HistoryMonth : Screen("history/{monthKey}") {
         fun createRoute(monthKey: String) = "history/${java.net.URLEncoder.encode(monthKey, "UTF-8")}"
     }
-    object Workers : Screen("workers")
     object Profile : Screen("profile/{email}") {
         fun createRoute(email: String) = "profile/${java.net.URLEncoder.encode(email, "UTF-8")}"
     }
@@ -100,9 +99,6 @@ fun AppNavigation(navController: NavHostController) {
                 },
                 onHistoryClick = {
                     navController.navigate(Screen.History.route)
-                },
-                onWorkersClick = {
-                    navController.navigate(Screen.Workers.route)
                 }
             )
         }
@@ -142,11 +138,6 @@ fun AppNavigation(navController: NavHostController) {
                 monthKey = monthKey,
                 onBackClick = { navController.popBackStack() },
                 readOnly = true
-            )
-        }
-        composable(Screen.Workers.route) {
-            WorkersScreen(
-                onBackClick = { navController.popBackStack() }
             )
         }
         composable(Screen.Profile.route) { backStackEntry ->

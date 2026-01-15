@@ -8,11 +8,8 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
     
-    // Change this to your server's IP address
-    // For emulator use: 10.0.2.2 (maps to localhost)
-    // For physical device: use your computer's IP address
-    // Port 5180 matches the ASP.NET backend launchSettings.json
-    private const val BASE_URL = "http://10.0.2.2:5180/"
+    // Deployed backend URL
+    private const val BASE_URL = "https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/"
     
     private var authToken: String? = null
     

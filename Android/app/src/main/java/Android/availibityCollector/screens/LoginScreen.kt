@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import Android.availibityCollector.data.api.VolleyClient
 import Android.availibityCollector.ui.theme.MyApplicationTheme
@@ -28,6 +29,9 @@ fun LoginScreen(
     onLoginSuccess: (String) -> Unit,  // Changed to pass email
     onRegisterClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val volleyClient = remember { VolleyClient.getInstance(context) }
+    
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -157,7 +161,6 @@ fun LoginScreen(
                             isLoading = false
                         }
                         else -> {
-                            val volleyClient = VolleyClient.getInstance(LocalContext.current)
                             volleyClient.login(
                                 email = email,
                                 password = password,

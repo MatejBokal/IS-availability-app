@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using AvailabilityCollector.Data;
 using AvailabilityCollector.Models;
 
@@ -8,7 +10,7 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/months")]
-[Authorize]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public class MonthsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -32,6 +34,60 @@ public class MonthsController : ControllerBase
             .ToListAsync();
 
         return Ok(unlockedMonths);
+    }
+
+    [HttpGet("available")]
+    [Authorize(Roles = "Worker,Admin")]
+    public async Task<ActionResult<List<MonthDto>>> GetAvailableMonths()
+    {
+        var now = DateTime.UtcNow;
+        var currentMonth = new DateTime(now.Year, now.Month, 1);
+        var nextMonth = currentMonth.AddMonths(1);
+
+        // Load all months that were ever unlocked (or have submissions)
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        var userSubmissions = await _context.AvailabilitySubmissions
+            .Where(s => s.UserId == userId)
+            .Select(s => s.AvailabilityMonthId)
+            .ToListAsync();
+
+        var allMonths = await _context.AvailabilityMonths.ToListAsync();
+
+        // Filter months that are at least 1 month in advance OR have user submissions
+        var availableMonths = allMonths
+            .Where(m =>
+            {
+                try
+                {
+                    var monthDate = DateTime.ParseExact(m.MonthKey, "MM-yyyy", null);
+                    // Include months that are at least next month, or months where user has submissions
+                    return monthDate >= nextMonth || userSubmissions.Contains(m.Id);
+                }
+                catch
+                {
+                    return false;
+                }
+            })
+            .OrderBy(m =>
+            {
+                try
+                {
+                    return DateTime.ParseExact(m.MonthKey, "MM-yyyy", null);
+                }
+                catch
+                {
+                    return DateTime.MaxValue;
+                }
+            })
+            .Select(m => new MonthDto(m.MonthKey, m.IsUnlocked, m.LockDateTimeUtc))
+            .ToList();
+
+        return Ok(availableMonths);
     }
 
     [HttpPost("{monthKey}/unlock")]

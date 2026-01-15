@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import Android.availibityCollector.data.api.VolleyClient
-import Android.availibityCollector.data.models.AvailabilityModels.MonthDto
+import Android.availibityCollector.data.models.MonthDto
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -35,7 +35,7 @@ fun MonthSelectionScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(Unit) {
-        volleyClient.getUnlockedMonths(
+        volleyClient.getAvailableMonths(
             onSuccess = { monthList ->
                 months = monthList
                 isLoading = false

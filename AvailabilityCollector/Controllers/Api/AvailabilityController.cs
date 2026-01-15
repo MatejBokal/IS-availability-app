@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AvailabilityCollector.Data;
@@ -9,7 +10,7 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/availability/my")]
-[Authorize(Roles = "Worker,Admin")]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Worker,Admin")]
 public class AvailabilityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;

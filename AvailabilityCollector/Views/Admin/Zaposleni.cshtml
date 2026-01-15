@@ -186,11 +186,16 @@
                                     <option value="@pos.Name">@pos.Name</option>
                                 }
                             </select>
-                            <button type="button" class="btn btn-outline-secondary align-self-start" onclick="addNewPosition('employeeSecondaryPositions')" title="Dodaj novo pozicijo">
-                                <i class="bi bi-plus"></i>
-                            </button>
+                            <div class="d-flex flex-column gap-2 align-self-start">
+                                <button type="button" class="btn btn-outline-secondary" onclick="addNewPosition('employeeSecondaryPositions')" title="Dodaj novo pozicijo">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" onclick="clearSecondaryPositions()" title="Počisti izbrane pozicije">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            </div>
                         </div>
-                        <small class="form-text text-muted">Držite Ctrl (ali Cmd na Mac) za izbiro več pozicij.</small>
+                        <small class="form-text text-muted">Držite Ctrl (ali Cmd na Mac) za izbiro več pozicij. Za odstranitev izbire kliknite ponovno z Ctrl/Cmd ali uporabite gumb "Počisti".</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -321,6 +326,13 @@
             });
         }
         
+        function clearSecondaryPositions() {
+            const secondarySelect = document.getElementById('employeeSecondaryPositions');
+            Array.from(secondarySelect.options).forEach(option => {
+                option.selected = false;
+            });
+        }
+        
         function editEmployee(userId, firstName, lastName, email, position, employmentType, secondaryPositions) {
             document.getElementById('employeeModalTitle').textContent = 'Uredi zaposlenega';
             document.getElementById('employeeUserId').value = userId;
@@ -390,6 +402,12 @@
                         body: JSON.stringify({ name: newPosition.trim() })
                     });
 
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+
                     const result = await response.json();
                     if (result.success) {
                         // Add to both position dropdowns
@@ -422,7 +440,7 @@
                     }
                 } catch (error) {
                     console.error('Error adding position:', error);
-                    alert('Napaka pri dodajanju pozicije. Poskusite znova.');
+                    alert('Napaka pri dodajanju pozicije: ' + error.message);
                 }
             }
         }
@@ -432,29 +450,74 @@
             const userId = document.getElementById('employeeUserId').value;
             const isEdit = userId !== '';
             
+            // Validate required fields
+            const firstName = document.getElementById('employeeFirstName').value.trim();
+            const lastName = document.getElementById('employeeLastName').value.trim();
+            const email = document.getElementById('employeeEmail').value.trim();
+            
+            if (!firstName || !lastName) {
+                alert('Ime in priimek sta obvezna polja.');
+                return;
+            }
+            
+            if (!email) {
+                alert('E-pošta je obvezno polje.');
+                return;
+            }
+            
             // Get selected secondary positions
             const secondarySelect = document.getElementById('employeeSecondaryPositions');
-            const selectedSecondary = Array.from(secondarySelect.selectedOptions).map(option => option.value);
+            const selectedSecondary = Array.from(secondarySelect.selectedOptions)
+                .map(option => option.value)
+                .filter(v => v && v.trim() !== ''); // Filter out empty values
             const secondaryPositionsString = selectedSecondary.length > 0 ? selectedSecondary.join(', ') : null;
             
+            // Helper function to convert empty string to null
+            const toNullIfEmpty = (value) => {
+                const trimmed = value ? value.trim() : '';
+                return trimmed === '' ? null : trimmed;
+            };
+            
+            // Validate and convert employment type - must be valid enum or null
+            const employmentTypeSelect = document.getElementById('employeeEmploymentType');
+            const employmentTypeValue = employmentTypeSelect ? employmentTypeSelect.value : '';
+            let employmentType = null;
+            
+            // Only set employmentType if it's a valid enum value
+            if (employmentTypeValue && employmentTypeValue.trim() !== '') {
+                const validTypes = ['RednoZaposleni', 'Studenti', 'SP'];
+                const trimmedValue = employmentTypeValue.trim();
+                if (validTypes.includes(trimmedValue)) {
+                    employmentType = trimmedValue;
+                }
+                // If invalid value, keep as null (don't send invalid enum values to server)
+            }
+            
             const data = {
-                firstName: document.getElementById('employeeFirstName').value,
-                lastName: document.getElementById('employeeLastName').value,
-                position: document.getElementById('employeePosition').value || null,
-                employmentType: document.getElementById('employeeEmploymentType').value || null,
+                firstName: firstName,
+                lastName: lastName,
+                position: toNullIfEmpty(document.getElementById('employeePosition').value),
+                employmentType: employmentType, // Explicitly null if not set, never empty string
                 secondaryPositions: secondaryPositionsString
             };
             
             if (isEdit) {
                 data.userId = userId;
-                data.email = document.getElementById('employeeEmail').value;
+                data.email = email;
                 
-                fetch('@Url.Action("UpdateEmployee", "Admin")', {
+                fetch('/admin/update-employee', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -462,21 +525,31 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             } else {
                 const password = document.getElementById('employeePassword').value;
-                if (!password) {
+                if (!password || !password.trim()) {
                     alert('Geslo je obvezno pri dodajanju novega zaposlenega.');
                     return;
                 }
-                data.email = document.getElementById('employeeEmail').value;
+                data.email = email;
                 data.password = password;
-                fetch('@Url.Action("AddEmployee", "Admin")', {
+                fetch('/admin/add-employee', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -484,17 +557,27 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             }
         });
         
         function generatePassword(userId, email) {
-            fetch('@Url.Action("GeneratePassword", "Admin")', {
+            fetch('/admin/generate-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: userId })
             })
-            .then(response => response.json())
+            .then(async response => {
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.password) {
                     document.getElementById('passwordEmail').textContent = email;
@@ -505,17 +588,27 @@
                     alert('Napaka: ' + (data.error || 'Neznana napaka'));
                 }
             })
-            .catch(error => alert('Napaka pri ustvarjanju gesla: ' + error));
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Napaka pri ustvarjanju gesla: ' + error.message);
+            });
         }
         
         function assignAdminRole(userId) {
             if (confirm('Ali ste prepričani, da želite dodeliti Admin vlogo temu uporabniku?')) {
-                fetch('@Url.Action("AssignAdminRole", "Admin")', {
+                fetch('/admin/assign-admin-role', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId: userId })
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -523,18 +616,28 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             }
         }
         
         function removeAdminRole(userId) {
             if (confirm('Ali ste prepričani, da želite odstraniti Admin vlogo temu uporabniku?')) {
-                fetch('@Url.Action("RemoveAdminRole", "Admin")', {
+                fetch('/admin/remove-admin-role', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId: userId })
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -542,18 +645,28 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             }
         }
         
         function setInactive(userId) {
             if (confirm('Ali ste prepričani, da želite nastaviti tega zaposlenega kot neaktiven?')) {
-                fetch('@Url.Action("SetEmployeeInactive", "Admin")', {
+                fetch('/admin/set-employee-inactive', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId: userId })
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -561,17 +674,27 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             }
         }
         
         function setActive(userId) {
-            fetch('@Url.Action("SetEmployeeActive", "Admin")', {
+            fetch('/admin/set-employee-active', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: userId })
             })
-            .then(response => response.json())
+            .then(async response => {
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                }
+                return response.json();
+            })
             .then(result => {
                 if (result.success) {
                     location.reload();
@@ -579,17 +702,27 @@
                     alert('Napaka: ' + result.error);
                 }
             })
-            .catch(error => alert('Napaka: ' + error));
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Napaka: ' + error.message);
+            });
         }
         
         function deleteEmployee(userId) {
             if (confirm('Ali ste prepričani, da želite izbrisati tega zaposlenega? To dejanje je nepovratno!')) {
-                fetch('@Url.Action("DeleteEmployee", "Admin")', {
+                fetch('/admin/delete-employee', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId: userId })
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        throw new Error(`Server returned ${response.status}: ${text.substring(0, 200)}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
                         location.reload();
@@ -597,7 +730,10 @@
                         alert('Napaka: ' + result.error);
                     }
                 })
-                .catch(error => alert('Napaka: ' + error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Napaka: ' + error.message);
+                });
             }
         }
     </script>

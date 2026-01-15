@@ -17,10 +17,10 @@ class AuthRepository {
     
     suspend fun login(email: String, password: String, rememberMe: Boolean = false): Result<AuthResponse> {
         return try {
-            val response = apiService.login(LoginRequest(email, password, rememberMe))
+            val response = apiService.login(LoginRequest(email, password))
             if (response.isSuccessful && response.body() != null) {
                 val authResponse = response.body()!!
-                authResponse.token?.let { RetrofitClient.setAuthToken(it) }
+                RetrofitClient.setAuthToken(authResponse.token)
                 Result.Success(authResponse)
             } else {
                 Result.Error(response.message() ?: "Prijava ni uspela")
@@ -28,17 +28,15 @@ class AuthRepository {
         } catch (e: Exception) {
             // For demo purposes, allow offline login
             Result.Success(AuthResponse(
-                success = true,
-                message = "Offline login",
                 token = "demo-token",
-                user = null
+                expiresAtUtc = java.time.Instant.now().plusSeconds(86400).toString() // 24 hours from now
             ))
         }
     }
     
     suspend fun register(email: String, password: String, confirmPassword: String): Result<AuthResponse> {
         return try {
-            val response = apiService.register(RegisterRequest(email, password, confirmPassword))
+            val response = apiService.register(RegisterRequest(email, password))
             if (response.isSuccessful && response.body() != null) {
                 Result.Success(response.body()!!)
             } else {

@@ -27,8 +27,7 @@ fun HomeScreen(
     onLogoutClick: () -> Unit,
     onProfileClick: () -> Unit,
     onAvailabilityClick: () -> Unit,
-    onHistoryClick: () -> Unit,
-    onWorkersClick: () -> Unit
+    onHistoryClick: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -138,16 +137,6 @@ fun HomeScreen(
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Workers card
-            NavigationCard(
-                title = "Delavci",
-                description = "Preglejte podatke o delavcih",
-                icon = Icons.Filled.Person,
-                onClick = onWorkersClick
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
             // Settings card
             NavigationCard(
                 title = "Nastavitve",
@@ -222,8 +211,7 @@ fun HomeScreenPreview() {
             onLogoutClick = {},
             onProfileClick = {},
             onAvailabilityClick = {},
-            onHistoryClick = {},
-            onWorkersClick = {}
+            onHistoryClick = {}
         )
     }
 }

@@ -58,39 +58,64 @@ Aplikacija uporablja **Volley** knjižnico za HTTP zahtevke in **JWT tokenje** z
 
 ---
 
+## 🌐 Dostop do aplikacije
+
+Aplikacija je javno dostopna na naslednjih naslovih:
+
+- **Spletna aplikacija:** [https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/](https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/)
+- **REST API:** [https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/api/](https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/api/)
+- **Swagger UI dokumentacija:** [https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/swagger](https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/swagger)
+
+> **Opomba:** API je integriran v isto ASP.NET Core aplikacijo in je dostopen preko prefixa `/api/`. Swagger UI omogoča interaktivno testiranje in pregled vseh API endpointov.
+
+---
+
 ## 📸 Zaslonske slike grafičnega vmesnika
 
-> **Opomba:** Zaslonske slike bodo dodane kasneje.
+### Spletna aplikacija
+
+#### Administratorski dashboard
+![Administratorski dashboard](docs/images/dashboard.png)
+
+#### Tabela razpoložljivosti delavcev
+![Tabela razpoložljivosti delavcev](docs/images/tabela-razpolozljivosti.png)
+
+#### Sistem obveščanja
+![Sistem obveščanja](docs/images/obvescanje.png)
 
 ### Mobilna aplikacija (Android)
-- Prikaz zaslonskih slik mobilne aplikacije
 
-### Spletna aplikacija
-- Prikaz zaslonskih slik spletne aplikacije
+#### Glavni zaslon
+![Glavni zaslon mobilne aplikacije](docs/images/mobile-dashboard.jpg)
+
+#### Kalendar za oddajo razpoložljivosti
+![Kalendar za oddajo razpoložljivosti](docs/images/mobile-razpolozljivost.jpg)
 
 ---
 
 ## 👨‍💻 Opis nalog, ki jih je izvedel vsak izmed študentov
 
+### Jožef Gabrijel Avsec (63220010)
+- **Začetna Android aplikacija** — osnovna struktura, gradle konfiguracija, pogledi in styling
+
 ### Matej Bokal (63200465)
-- **Razvoj spletne aplikacije** (ASP.NET Core MVC) — vsi kontrolerji, pogledi in funkcionalnosti
-- **Razvoj REST API storitve** — implementacija vseh API endpointov z JWT avtentikacijo
-- **Načrtovanje in implementacija podatkovne baze** — Entity Framework Core modeli, migracije, relacije
-- **Integracija ASP.NET Core Identity** — upravljanje uporabnikov, vloge in avtorizacija
-- **Swagger dokumentacija** — konfiguracija in nastavitve API dokumentacije
-- **Docker integracija** — konfiguracija SQL Server v Dockerju
-- **Azure deployment** — priprava in dokumentacija za uvajanje v Azure
-- **Izdelava dokumentacije** — SETUP.md, AZURE_DEPLOYMENT.md, API_INTEGRATION_GUIDE.md
+- **Razvoj spletne aplikacije**
+- **Razvoj REST API storitve** — implementacija API endpointov z JWT avtentikacijo
+- **Azure deployment** — aplikacija in baza
+- **Izdelava README.md**
 - **Razširitve in optimizacije Android aplikacije** — dopolnitve in izboljšave
 
-### Jožef Gabrijel Avsec (63220010)
-- **Osnutek začetne Android aplikacije** — osnovna struktura, gradle konfiguracija, osnovni zasloni
+
 
 ---
 
 ## 🗄️ Podatkovni model podatkovne baze
 
-> **Opomba:** Diagram podatkovnega modela bo dodan kasneje (generiran z SQL Server Management Studio).
+### Diagram podatkovnega modela
+
+![Diagram podatkovnega modela](docs/images/database-diagram.png)
+
+*Diagram prikazuje strukturo podatkovne baze z vsemi tabelami in njihovimi relacijami. Generiran z SQL Server Management Studio.*
 
 ### Opis podatkovnega modela
 

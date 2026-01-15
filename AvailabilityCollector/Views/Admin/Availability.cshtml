@@ -195,10 +195,74 @@
                 }
                 else
                 {
+                    // Filter applied: Show header row with position/employment type name and dates
+                    string filterHeaderName = "";
+                    if (!string.IsNullOrEmpty(selectedPositionFilter) && !string.IsNullOrEmpty(selectedEmploymentTypeFilter))
+                    {
+                        // Both filters: Show position name (primary)
+                        filterHeaderName = selectedPositionFilter.ToUpper();
+                    }
+                    else if (!string.IsNullOrEmpty(selectedPositionFilter))
+                    {
+                        // Position filter only
+                        filterHeaderName = selectedPositionFilter.ToUpper();
+                    }
+                    else if (!string.IsNullOrEmpty(selectedEmploymentTypeFilter))
+                    {
+                        // Employment type filter only: Convert enum to display name
+                        switch (selectedEmploymentTypeFilter)
+                        {
+                            case "RednoZaposleni":
+                                filterHeaderName = "REDNO ZAPOSLENI";
+                                break;
+                            case "Studenti":
+                                filterHeaderName = "ŠTUDENTI";
+                                break;
+                            case "SP":
+                                filterHeaderName = "S.P.";
+                                break;
+                            default:
+                                filterHeaderName = selectedEmploymentTypeFilter.ToUpper();
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        // Fallback (shouldn't happen, but just in case)
+                        filterHeaderName = "FILTRIRANI ZAPOSLENI";
+                    }
+                    
+                    // Header row with filter name and dates
+                    <tr class="position-header-row">
+                        <td style="position: sticky; left: 0; background: white; z-index: 5;">
+                            <strong>@filterHeaderName</strong>
+                        </td>
+                        @for (int day = 1; day <= daysInMonth; day++)
+                        {
+                            var date = new DateOnly(year, monthNum, day);
+                            var dayOfWeek = date.DayOfWeek;
+                            var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                            var isHoliday = holidayDates.Contains(date);
+                            var isSpecialDay = isWeekend || isHoliday;
+                            
+                            <th class="text-center @(isSpecialDay ? "bg-secondary bg-opacity-25" : "")" style="min-width: 60px;">
+                                <div>@day</div>
+                                <small class="text-muted">@date.ToString("ddd", new System.Globalization.CultureInfo("sl-SI"))</small>
+                                @if (isHoliday)
+                                {
+                                    var holiday = holidays.FirstOrDefault(h => h.Date == date);
+                                    <br /><small class="text-muted" style="font-size: 0.7em;">@(holiday?.Name ?? "")</small>
+                                }
+                            </th>
+                        }
+                    </tr>
+                    
                     // Filter applied: Primary first, then secondary (grayed out)
-                    // Primary position employees
+                    // Controller already filtered employees, so we just separate primary vs secondary for display
+                    // Primary position employees (when position filter is active)
                     var primaryEmployees = Model.Employees
-                        .Where(e => (e.Position ?? "").Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase))
+                        .Where(e => string.IsNullOrEmpty(selectedPositionFilter) || 
+                                   (e.Position != null && e.Position.Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase)))
                         .OrderBy(e => e.LastName)
                         .ThenBy(e => e.FirstName)
                         .ToList();
@@ -277,15 +341,20 @@
                         </tr>
                     }
                     
-                    // Secondary position employees (grayed out)
-                    var secondaryEmployees = Model.Employees
-                        .Where(e => !shownEmployeeIds.Contains(e.Id) && 
-                                   !string.IsNullOrEmpty(e.SecondaryPositions) &&
-                                   e.SecondaryPositions.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                       .Any(sp => sp.Trim().Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase)))
-                        .OrderBy(e => e.LastName)
-                        .ThenBy(e => e.FirstName)
-                        .ToList();
+                    // Secondary position employees (grayed out) - only if position filter is applied
+                    var secondaryEmployees = new List<ApplicationUser>();
+                    if (!string.IsNullOrEmpty(selectedPositionFilter))
+                    {
+                        secondaryEmployees = Model.Employees
+                            .Where(e => !shownEmployeeIds.Contains(e.Id) && 
+                                       !string.IsNullOrEmpty(e.SecondaryPositions) &&
+                                       e.SecondaryPositions.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                           .Any(sp => sp.Trim().Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase)) &&
+                                       (string.IsNullOrEmpty(selectedEmploymentTypeFilter) || (e.EmploymentType?.ToString() ?? "").Equals(selectedEmploymentTypeFilter, StringComparison.OrdinalIgnoreCase)))
+                            .OrderBy(e => e.LastName)
+                            .ThenBy(e => e.FirstName)
+                            .ToList();
+                    }
                     
                     @foreach (var employee in secondaryEmployees)
                     {

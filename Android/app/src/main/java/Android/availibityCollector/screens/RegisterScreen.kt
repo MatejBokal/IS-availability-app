@@ -31,6 +31,9 @@ fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onLoginClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val volleyClient = remember { VolleyClient.getInstance(context) }
+    
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -232,13 +235,12 @@ fun RegisterScreen(
                                 errorMessage = passwordError
                                 isLoading = false
                             } else {
-                                val volleyClient = VolleyClient.getInstance(LocalContext.current)
                                 volleyClient.register(
                                     email = email,
                                     password = password,
                                     onSuccess = { message ->
                                         Toast.makeText(
-                                            LocalContext.current,
+                                            context,
                                             message,
                                             Toast.LENGTH_LONG
                                         ).show()

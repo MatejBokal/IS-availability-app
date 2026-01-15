@@ -160,12 +160,59 @@ public class AdminController : Controller
             await _context.SaveChangesAsync();
         }
 
-        // Get all active users (employees)
-        var employees = await _userManager.Users
+        // Get filter parameters first
+        var selectedPosition = Request.Query["position"].ToString();
+        var selectedEmploymentType = Request.Query["employmentType"].ToString();
+
+        // Parse employment type enum if filter is specified
+        EmploymentType? employmentTypeFilter = null;
+        if (!string.IsNullOrEmpty(selectedEmploymentType))
+        {
+            if (Enum.TryParse<EmploymentType>(selectedEmploymentType, out var employmentTypeEnum))
+            {
+                employmentTypeFilter = employmentTypeEnum;
+            }
+        }
+
+        // Get all active users (employees) - we'll filter in memory to handle secondary positions
+        var allEmployees = await _userManager.Users
             .Where(u => u.IsActive)
             .OrderBy(u => u.LastName)
             .ThenBy(u => u.FirstName)
             .ToListAsync();
+
+        // Apply filters in memory (allows for secondary position checking)
+        var employees = allEmployees.Where(e =>
+        {
+            // Check employment type filter
+            if (employmentTypeFilter.HasValue)
+            {
+                if (e.EmploymentType != employmentTypeFilter.Value)
+                {
+                    return false;
+                }
+            }
+
+            // Check position filter
+            if (!string.IsNullOrEmpty(selectedPosition))
+            {
+                // Check primary position
+                var matchesPrimary = e.Position != null && 
+                    e.Position.Equals(selectedPosition, StringComparison.OrdinalIgnoreCase);
+                
+                // Check secondary positions
+                var matchesSecondary = !string.IsNullOrEmpty(e.SecondaryPositions) &&
+                    e.SecondaryPositions.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Any(sp => sp.Trim().Equals(selectedPosition, StringComparison.OrdinalIgnoreCase));
+                
+                if (!matchesPrimary && !matchesSecondary)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }).ToList();
 
         // Get all submissions for this month
         var submissions = await _context.AvailabilitySubmissions
@@ -185,10 +232,6 @@ public class AdminController : Controller
         var holidays = await _context.Holidays
             .Where(h => h.Year == year)
             .ToListAsync();
-
-        // Get filter parameters
-        var selectedPosition = Request.Query["position"].ToString();
-        var selectedEmploymentType = Request.Query["employmentType"].ToString();
 
         ViewBag.MonthKey = monthKey;
         ViewBag.Month = month;
@@ -318,8 +361,7 @@ public class AdminController : Controller
 
             totalRequiredShifts += applicableShifts.Count;
 
-            var totalRequiredPeopleForDay = 0;
-            var availablePeopleForDay = new HashSet<string>();
+            var hasUncoveredShiftOnDay = false;
 
             // Analyze each shift
             foreach (var shift in applicableShifts)
@@ -329,8 +371,6 @@ public class AdminController : Controller
                 var shiftStartTime = TimeOnly.Parse(shiftTimeParts[0].Trim());
                 var shiftEndTime = TimeOnly.Parse(shiftTimeParts[1].Trim());
                 var requiredPeople = shift.ShiftEntry.NumberOfPeople;
-
-                totalRequiredPeopleForDay += requiredPeople;
 
                 // Find employees who can work this shift
                 var positionName = shift.PositionShift.Position.Name;
@@ -379,7 +419,6 @@ public class AdminController : Controller
                         if (canWork)
                         {
                             availableEmployees.Add(employee);
-                            availablePeopleForDay.Add(employee.Id);
                         }
                     }
                 }
@@ -388,6 +427,7 @@ public class AdminController : Controller
                 if (availableCount < requiredPeople)
                 {
                     totalUncoveredShifts++;
+                    hasUncoveredShiftOnDay = true;
                     uncoveredShifts.Add(new UncoveredShiftViewModel
                     {
                         Date = date,
@@ -400,8 +440,8 @@ public class AdminController : Controller
                 }
             }
 
-            // Check if total required people > total available people for the day
-            if (totalRequiredPeopleForDay > availablePeopleForDay.Count)
+            // Mark day as having insufficient coverage if it has any uncovered shifts
+            if (hasUncoveredShiftOnDay)
             {
                 daysWithInsufficientCoverage.Add(date);
             }
@@ -740,7 +780,15 @@ public class AdminController : Controller
             .OrderBy(p => p.Name)
             .ToListAsync();
         
+        // Get all active users for individual notification selection
+        var users = await _userManager.Users
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.LastName)
+            .ThenBy(u => u.FirstName)
+            .ToListAsync();
+        
         ViewBag.Positions = positions;
+        ViewBag.Users = users;
         return View();
     }
 
@@ -794,6 +842,19 @@ public class AdminController : Controller
                     .Select(u => u.Id)
                     .ToListAsync();
                 userIds = employmentTypeUsers;
+                break;
+
+            case "user":
+                if (string.IsNullOrWhiteSpace(request.UserId))
+                {
+                    return Json(new { success = false, error = "Uporabnik je obvezen." });
+                }
+                var user = await _userManager.FindByIdAsync(request.UserId);
+                if (user == null || !user.IsActive)
+                {
+                    return Json(new { success = false, error = "Uporabnik ni najden ali ni aktiven." });
+                }
+                userIds = new List<string> { user.Id };
                 break;
 
             default:
@@ -1079,41 +1140,77 @@ public class AdminController : Controller
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> AddEmployee([FromBody] AddEmployeeRequest request)
     {
-        if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+        try
         {
-            return Json(new { success = false, error = "E-pošta in geslo sta obvezna." });
+            // Check if model binding failed
+            if (request == null || !ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                var errorMessage = errors.Any() 
+                    ? string.Join(", ", errors) 
+                    : "Neveljavna zahteva. Preverite, ali so vsa polja pravilno izpolnjena.";
+                return Json(new { success = false, error = errorMessage });
+            }
+
+            // Validate required fields with specific error messages
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return Json(new { success = false, error = "E-pošta je obvezno polje." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Json(new { success = false, error = "Geslo je obvezno polje." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FirstName))
+            {
+                return Json(new { success = false, error = "Ime je obvezno polje." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.LastName))
+            {
+                return Json(new { success = false, error = "Priimek je obvezno polje." });
+            }
+
+            // Check if user already exists
+            var existingUser = await _userManager.FindByEmailAsync(request.Email);
+            if (existingUser != null)
+            {
+                return Json(new { success = false, error = "Uporabnik s tem e-poštnim naslovom že obstaja." });
+            }
+
+            var user = new ApplicationUser
+            {
+                UserName = request.Email.Trim(),
+                Email = request.Email.Trim(),
+                FirstName = request.FirstName?.Trim(),
+                LastName = request.LastName?.Trim(),
+                Position = string.IsNullOrWhiteSpace(request.Position) ? null : request.Position.Trim(),
+                EmploymentType = request.EmploymentType, // Nullable enum, should be fine
+                SecondaryPositions = string.IsNullOrWhiteSpace(request.SecondaryPositions) ? null : request.SecondaryPositions.Trim(),
+                IsActive = true,
+                EmailConfirmed = true
+            };
+
+            var result = await _userManager.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+            {
+                return Json(new { success = false, error = string.Join(", ", result.Errors.Select(e => e.Description)) });
+            }
+
+            // Add to Worker role by default
+            await _userManager.AddToRoleAsync(user, "Worker");
+
+            return Json(new { success = true, message = "Zaposleni je bil uspešno dodan." });
         }
-
-        // Check if user already exists
-        var existingUser = await _userManager.FindByEmailAsync(request.Email);
-        if (existingUser != null)
+        catch (Exception ex)
         {
-            return Json(new { success = false, error = "Uporabnik s tem e-poštnim naslovom že obstaja." });
+            return Json(new { success = false, error = $"Napaka pri dodajanju: {ex.Message}" });
         }
-
-        var user = new ApplicationUser
-        {
-            UserName = request.Email,
-            Email = request.Email,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            Position = request.Position,
-            EmploymentType = request.EmploymentType,
-            SecondaryPositions = request.SecondaryPositions,
-            IsActive = true,
-            EmailConfirmed = true
-        };
-
-        var result = await _userManager.CreateAsync(user, request.Password);
-        if (!result.Succeeded)
-        {
-            return Json(new { success = false, error = string.Join(", ", result.Errors.Select(e => e.Description)) });
-        }
-
-        // Add to Worker role by default
-        await _userManager.AddToRoleAsync(user, "Worker");
-
-        return Json(new { success = true, message = "Zaposleni je bil uspešno dodan." });
     }
 
     [HttpPost]
@@ -1160,41 +1257,82 @@ public class AdminController : Controller
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> UpdateEmployee([FromBody] UpdateEmployeeRequest request)
     {
-        var user = await _userManager.FindByIdAsync(request.UserId);
-        if (user == null)
+        try
         {
-            return Json(new { success = false, error = "Uporabnik ni najden." });
-        }
-
-        // Update email if changed (also update UserName since they're the same)
-        if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
-        {
-            var setEmailResult = await _userManager.SetEmailAsync(user, request.Email);
-            if (!setEmailResult.Succeeded)
+            // Check if model binding failed
+            if (request == null || !ModelState.IsValid)
             {
-                return Json(new { success = false, error = string.Join(", ", setEmailResult.Errors.Select(e => e.Description)) });
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                var errorMessage = errors.Any() 
+                    ? string.Join(", ", errors) 
+                    : "Neveljavna zahteva. Preverite, ali so vsa polja pravilno izpolnjena.";
+                return Json(new { success = false, error = errorMessage });
             }
 
-            var setUserNameResult = await _userManager.SetUserNameAsync(user, request.Email);
-            if (!setUserNameResult.Succeeded)
+            if (string.IsNullOrEmpty(request.UserId))
             {
-                return Json(new { success = false, error = string.Join(", ", setUserNameResult.Errors.Select(e => e.Description)) });
+                return Json(new { success = false, error = "ID uporabnika manjka." });
             }
+
+            // Validate required fields with specific error messages
+            if (string.IsNullOrWhiteSpace(request.FirstName))
+            {
+                return Json(new { success = false, error = "Ime je obvezno polje." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.LastName))
+            {
+                return Json(new { success = false, error = "Priimek je obvezno polje." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return Json(new { success = false, error = "E-pošta je obvezno polje." });
+            }
+
+            var user = await _userManager.FindByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return Json(new { success = false, error = "Uporabnik ni najden." });
+            }
+
+            // Update email if changed (also update UserName since they're the same)
+            if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
+            {
+                var setEmailResult = await _userManager.SetEmailAsync(user, request.Email);
+                if (!setEmailResult.Succeeded)
+                {
+                    return Json(new { success = false, error = string.Join(", ", setEmailResult.Errors.Select(e => e.Description)) });
+                }
+
+                var setUserNameResult = await _userManager.SetUserNameAsync(user, request.Email);
+                if (!setUserNameResult.Succeeded)
+                {
+                    return Json(new { success = false, error = string.Join(", ", setUserNameResult.Errors.Select(e => e.Description)) });
+                }
+            }
+
+            user.FirstName = request.FirstName?.Trim();
+            user.LastName = request.LastName?.Trim();
+            user.Position = string.IsNullOrWhiteSpace(request.Position) ? null : request.Position.Trim();
+            user.EmploymentType = request.EmploymentType; // Nullable enum, should be fine
+            user.SecondaryPositions = string.IsNullOrWhiteSpace(request.SecondaryPositions) ? null : request.SecondaryPositions.Trim();
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                return Json(new { success = false, error = string.Join(", ", result.Errors.Select(e => e.Description)) });
+            }
+
+            return Json(new { success = true, message = "Zaposleni je bil uspešno posodobljen." });
         }
-
-        user.FirstName = request.FirstName;
-        user.LastName = request.LastName;
-        user.Position = request.Position;
-        user.EmploymentType = request.EmploymentType;
-        user.SecondaryPositions = request.SecondaryPositions;
-
-        var result = await _userManager.UpdateAsync(user);
-        if (!result.Succeeded)
+        catch (Exception ex)
         {
-            return Json(new { success = false, error = string.Join(", ", result.Errors.Select(e => e.Description)) });
+            return Json(new { success = false, error = $"Napaka pri posodabljanju: {ex.Message}" });
         }
-
-        return Json(new { success = true, message = "Zaposleni je bil uspešno posodobljen." });
     }
 
     [HttpPost]
@@ -1473,9 +1611,10 @@ public class AddPositionToMatricaRequest
     {
         public string Title { get; set; } = default!;
         public string Body { get; set; } = default!;
-        public string RecipientType { get; set; } = default!; // "all", "admins", "position", "employmentType"
+        public string RecipientType { get; set; } = default!; // "all", "admins", "position", "employmentType", "user"
         public string? Position { get; set; }
         public string? EmploymentType { get; set; }
+        public string? UserId { get; set; }
     }
 
 // ViewModel for Availability table

@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import Android.availibityCollector.data.api.VolleyClient
-import Android.availibityCollector.data.models.AvailabilityModels.AvailabilitySubmissionDto
+import Android.availibityCollector.data.models.AvailabilitySubmissionDto
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

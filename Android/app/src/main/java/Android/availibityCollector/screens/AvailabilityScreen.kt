@@ -19,7 +19,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import Android.availibityCollector.data.api.VolleyClient
-import Android.availibityCollector.data.models.AvailabilityModels.*
+import Android.availibityCollector.data.models.AvailabilityType
+import Android.availibityCollector.data.models.AvailabilityEntryDto
+import Android.availibityCollector.data.models.CreateAvailabilityRequest
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -58,7 +60,7 @@ fun AvailabilityScreen(
     var isLoading by remember { mutableStateOf(true) }
     var isLocked by remember { mutableStateOf(false) }
     var submissionId by remember { mutableStateOf<Int?>(null) }
-    var minDurationMinutes by remember { mutableStateOf(240) } // Default 4 hours
+    var minDurationMinutes by remember { mutableStateOf(240) } // Default 4 hours, will be fetched from backend
     
     // Track availability: LocalDate -> AvailabilityEntryDto
     val availability = remember { mutableStateMapOf<LocalDate, AvailabilityEntryDto>() }
@@ -67,6 +69,19 @@ fun AvailabilityScreen(
     var customStartTime by remember { mutableStateOf("") }
     var customEndTime by remember { mutableStateOf("") }
     var showTimeInput by remember { mutableStateOf(false) }
+    
+    // Load settings from backend
+    LaunchedEffect(Unit) {
+        volleyClient.getMinTimeRangeHours(
+            onSuccess = { hours ->
+                minDurationMinutes = (hours * 60).toInt()
+            },
+            onError = { error ->
+                // Keep default value if fetch fails
+                Toast.makeText(context, "Napaka pri nalaganju nastavitev: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
     
     // Load month info and existing submission
     LaunchedEffect(monthKey) {

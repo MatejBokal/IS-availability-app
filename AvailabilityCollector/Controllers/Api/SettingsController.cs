@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AvailabilityCollector.Data;
@@ -10,7 +11,7 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/settings")]
-[Authorize] // All settings endpoints require authentication
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)] // All settings endpoints require authentication
 public class SettingsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;

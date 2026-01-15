@@ -3,16 +3,40 @@ package Android.availibityCollector.data.api
 import android.content.Context
 import com.android.volley.Request
 import com.android.volley.RequestQueue
+import com.android.volley.Response
 import com.android.volley.toolbox.JsonArrayRequest
 import com.android.volley.toolbox.JsonObjectRequest
+import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.json.JSONObject
 import Android.availibityCollector.data.TokenManager
 import Android.availibityCollector.data.models.Worker
-import Android.availibityCollector.data.models.AvailabilityModels.*
-import Android.availibityCollector.data.models.AuthModels.*
+import Android.availibityCollector.data.models.AuthResponse
+import Android.availibityCollector.data.models.MonthDto
+import Android.availibityCollector.data.models.AvailabilitySubmissionDto
+import Android.availibityCollector.data.models.CreateAvailabilityRequest
+import Android.availibityCollector.data.models.AvailabilityEntryDto
+
+/**
+ * Custom StringRequest that supports custom headers
+ */
+private class AuthenticatedStringRequest(
+    method: Int,
+    url: String,
+    private val authHeaders: Map<String, String>,
+    listener: Response.Listener<String>,
+    errorListener: Response.ErrorListener
+) : StringRequest(method, url, listener, errorListener) {
+    override fun getHeaders(): MutableMap<String, String> {
+        val superHeaders = super.getHeaders() ?: emptyMap()
+        val headers = mutableMapOf<String, String>()
+        headers.putAll(superHeaders)
+        authHeaders.forEach { (key, value) -> headers[key] = value }
+        return headers
+    }
+}
 
 /**
  * Volley client for REST API communication with JWT authentication
@@ -21,10 +45,8 @@ import Android.availibityCollector.data.models.AuthModels.*
 class VolleyClient(context: Context) {
     
     companion object {
-        // For emulator use: 10.0.2.2 (maps to localhost)
-        // For physical device: use your computer's IP address
-        // Port 5180 matches the ASP.NET backend launchSettings.json
-        private const val BASE_URL = "http://10.0.2.2:5180/api/"
+        // Deployed backend URL
+        private const val BASE_URL = "https://availabilityapp-api-ascabgdzc2cvb7aw.italynorth-01.azurewebsites.net/api/"
         
         @Volatile
         private var INSTANCE: VolleyClient? = null
@@ -48,7 +70,8 @@ class VolleyClient(context: Context) {
     private fun getAuthHeaders(): Map<String, String> {
         val headers = mutableMapOf<String, String>()
         headers["Content-Type"] = "application/json"
-        tokenManager.getToken()?.let { token ->
+        val token = tokenManager.getToken()
+        if (token != null && token.isNotBlank()) {
             headers["Authorization"] = "Bearer $token"
         }
         return headers
@@ -76,12 +99,23 @@ class VolleyClient(context: Context) {
             jsonBody,
             { response ->
                 try {
+                    // ASP.NET Core serializes to camelCase by default
+                    // Response should be: {"token": "...", "expiresAtUtc": "2026-01-15T12:00:00Z"}
                     val authResponse: AuthResponse = gson.fromJson(response.toString(), AuthResponse::class.java)
-                    // Save token
-                    tokenManager.saveToken(authResponse.token, authResponse.expiresAtUtc, email)
-                    onSuccess(authResponse)
+                    
+                    if (authResponse.token.isNullOrBlank()) {
+                        onError("Invalid response: token is missing")
+                    } else {
+                        // Save token
+                        tokenManager.saveToken(
+                            authResponse.token, 
+                            authResponse.expiresAtUtc ?: "", 
+                            email
+                        )
+                        onSuccess(authResponse)
+                    }
                 } catch (e: Exception) {
-                    onError("Error parsing response: ${e.message}")
+                    onError("Error parsing response: ${e.message}. Response: ${response.toString()}")
                 }
             },
             { error ->
@@ -97,7 +131,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 headers["Content-Type"] = "application/json"
                 return headers
             }
@@ -147,7 +183,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 headers["Content-Type"] = "application/json"
                 return headers
             }
@@ -157,7 +195,144 @@ class VolleyClient(context: Context) {
     }
     
     /**
-     * Get unlocked months available for submission
+     * Get available months for submission (matches desktop Worker behavior)
+     * Returns months that are at least 1 month in advance OR have user submissions
+     * Falls back to unlocked months if the new endpoint is not available
+     */
+    fun getAvailableMonths(
+        onSuccess: (List<MonthDto>) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "${BASE_URL}months/available"
+        
+        val request = object : JsonArrayRequest(
+            Request.Method.GET,
+            url,
+            null,
+            { response ->
+                try {
+                    val type = object : TypeToken<List<MonthDto>>() {}.type
+                    val months: List<MonthDto> = gson.fromJson(response.toString(), type)
+                    onSuccess(months)
+                } catch (e: Exception) {
+                    onError("Error parsing response: ${e.message}")
+                }
+            },
+            { error ->
+                // If 404, fall back to unlocked months and filter client-side
+                if (error.networkResponse?.statusCode == 404) {
+                    getUnlockedMonthsWithFilter(
+                        onSuccess = onSuccess,
+                        onError = onError
+                    )
+                } else {
+                    val errorMessage = when {
+                        error.networkResponse != null -> {
+                            val errorBody = String(error.networkResponse.data ?: ByteArray(0))
+                            "HTTP ${error.networkResponse.statusCode}: $errorBody"
+                        }
+                        error.message != null -> error.message!!
+                        else -> "Unknown network error"
+                    }
+                    onError(errorMessage)
+                }
+            }
+        ) {
+            override fun getHeaders(): MutableMap<String, String> {
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
+                getAuthHeaders().forEach { (key, value) -> headers[key] = value }
+                return headers
+            }
+        }
+        
+        requestQueue.add(request)
+    }
+    
+    /**
+     * Fallback: Get unlocked months and filter client-side to match desktop behavior
+     * Shows months that are at least 1 month in advance OR have user submissions
+     */
+    private fun getUnlockedMonthsWithFilter(
+        onSuccess: (List<MonthDto>) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        getUnlockedMonths(
+            onSuccess = { unlockedMonths ->
+                // Get user's submissions to find months they've submitted to
+                getMySubmissions(
+                    onSuccess = { submissions ->
+                        val submissionMonthKeys = submissions.map { it.monthKey }.toSet()
+                        
+                        // Calculate next month
+                        val now = java.time.LocalDate.now()
+                        val currentMonth = java.time.YearMonth.from(now)
+                        val nextMonth = currentMonth.plusMonths(1)
+                        
+                        // Filter: months that are at least next month OR have user submissions
+                        val availableMonths = unlockedMonths.filter { month ->
+                            try {
+                                val parts = month.monthKey.split("-")
+                                val monthNum = parts[0].toInt()
+                                val year = parts[1].toInt()
+                                val monthDate = java.time.YearMonth.of(year, monthNum)
+                                
+                                // Include if it's at least next month OR user has a submission
+                                monthDate >= nextMonth || submissionMonthKeys.contains(month.monthKey)
+                            } catch (e: Exception) {
+                                false
+                            }
+                        }.sortedBy { month ->
+                            try {
+                                val parts = month.monthKey.split("-")
+                                val monthNum = parts[0].toInt()
+                                val year = parts[1].toInt()
+                                java.time.YearMonth.of(year, monthNum)
+                            } catch (e: Exception) {
+                                java.time.YearMonth.of(9999, 12)
+                            }
+                        }
+                        
+                        onSuccess(availableMonths)
+                    },
+                    onError = { _ ->
+                        // If we can't get submissions, just show unlocked months that are at least next month
+                        val now = java.time.LocalDate.now()
+                        val currentMonth = java.time.YearMonth.from(now)
+                        val nextMonth = currentMonth.plusMonths(1)
+                        
+                        val availableMonths = unlockedMonths.filter { month ->
+                            try {
+                                val parts = month.monthKey.split("-")
+                                val monthNum = parts[0].toInt()
+                                val year = parts[1].toInt()
+                                val monthDate = java.time.YearMonth.of(year, monthNum)
+                                monthDate >= nextMonth
+                            } catch (e: Exception) {
+                                false
+                            }
+                        }.sortedBy { month ->
+                            try {
+                                val parts = month.monthKey.split("-")
+                                val monthNum = parts[0].toInt()
+                                val year = parts[1].toInt()
+                                java.time.YearMonth.of(year, monthNum)
+                            } catch (e: Exception) {
+                                java.time.YearMonth.of(9999, 12)
+                            }
+                        }
+                        
+                        onSuccess(availableMonths)
+                    }
+                )
+            },
+            onError = onError
+        )
+    }
+    
+    /**
+     * Get unlocked months available for submission (kept for backward compatibility)
      */
     fun getUnlockedMonths(
         onSuccess: (List<MonthDto>) -> Unit,
@@ -191,7 +366,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
@@ -208,15 +385,15 @@ class VolleyClient(context: Context) {
         onSuccess: (MonthDto) -> Unit,
         onError: (String) -> Unit
     ) {
-        // Get from unlocked months list
-        getUnlockedMonths(
+        // Get from available months list
+        getAvailableMonths(
             onSuccess = { months ->
                 val month = months.find { it.monthKey == monthKey }
                 if (month != null) {
                     onSuccess(month)
                 } else {
-                    // Month not in unlocked list, check if it exists and is locked
-                    // For now, assume it's locked if not in unlocked list
+                    // Month not in available list, check if it exists and is locked
+                    // For now, assume it's locked if not in available list
                     onError("Month not found or locked")
                 }
             },
@@ -260,7 +437,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
@@ -324,7 +503,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
@@ -384,7 +565,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
@@ -403,6 +586,7 @@ class VolleyClient(context: Context) {
         onError: (String) -> Unit
     ) {
         // First get unlocked months, then try to get submission for each
+        // We use unlocked months here to avoid circular dependency with getAvailableMonths
         getUnlockedMonths(
             onSuccess = { months ->
                 val submissions = mutableListOf<AvailabilitySubmissionDto>()
@@ -439,6 +623,128 @@ class VolleyClient(context: Context) {
     }
     
     /**
+     * Get minimum time range hours setting
+     */
+    fun getMinTimeRangeHours(
+        onSuccess: (Double) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "${BASE_URL}settings/min-time-range-hours"
+        
+        val request = AuthenticatedStringRequest(
+            Request.Method.GET,
+            url,
+            getAuthHeaders(),
+            { response ->
+                try {
+                    // Backend returns just a number as string (e.g., "4.0")
+                    val hours = response.trim().toDoubleOrNull() ?: 4.0
+                    onSuccess(hours)
+                } catch (e: Exception) {
+                    onError("Error parsing response: ${e.message}")
+                }
+            },
+            { error ->
+                val errorMessage = when {
+                    error.networkResponse != null -> {
+                        val errorBody = String(error.networkResponse.data ?: ByteArray(0))
+                        "HTTP ${error.networkResponse.statusCode}: $errorBody"
+                    }
+                    error.message != null -> error.message!!
+                    else -> "Unknown network error"
+                }
+                onError(errorMessage)
+            }
+        )
+        
+        requestQueue.add(request)
+    }
+    
+    /**
+     * Get allowed time window setting
+     */
+    fun getAllowedTimeWindow(
+        onSuccess: (String, String) -> Unit,  // startTime, endTime
+        onError: (String) -> Unit
+    ) {
+        val url = "${BASE_URL}settings/allowed-time-window"
+        
+        val request = object : JsonObjectRequest(
+            Request.Method.GET,
+            url,
+            null,
+            { response ->
+                try {
+                    val startTime = response.optString("startTime", "07:00")
+                    val endTime = response.optString("endTime", "23:00")
+                    onSuccess(startTime, endTime)
+                } catch (e: Exception) {
+                    onError("Error parsing response: ${e.message}")
+                }
+            },
+            { error ->
+                val errorMessage = when {
+                    error.networkResponse != null -> {
+                        val errorBody = String(error.networkResponse.data ?: ByteArray(0))
+                        "HTTP ${error.networkResponse.statusCode}: $errorBody"
+                    }
+                    error.message != null -> error.message!!
+                    else -> "Unknown network error"
+                }
+                onError(errorMessage)
+            }
+        ) {
+            override fun getHeaders(): MutableMap<String, String> {
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
+                getAuthHeaders().forEach { (key, value) -> headers[key] = value }
+                return headers
+            }
+        }
+        
+        requestQueue.add(request)
+    }
+    
+    /**
+     * Get notification preference
+     */
+    fun getNotificationPreference(
+        onSuccess: (Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "${BASE_URL}settings/notifications"
+        
+        val request = AuthenticatedStringRequest(
+            Request.Method.GET,
+            url,
+            getAuthHeaders(),
+            { response ->
+                try {
+                    // Backend returns just a boolean as string (e.g., "true" or "false")
+                    val enabled = response.trim().toBoolean()
+                    onSuccess(enabled)
+                } catch (e: Exception) {
+                    onError("Error parsing response: ${e.message}")
+                }
+            },
+            { error ->
+                val errorMessage = when {
+                    error.networkResponse != null -> {
+                        val errorBody = String(error.networkResponse.data ?: ByteArray(0))
+                        "HTTP ${error.networkResponse.statusCode}: $errorBody"
+                    }
+                    error.message != null -> error.message!!
+                    else -> "Unknown network error"
+                }
+                onError(errorMessage)
+            }
+        )
+        
+        requestQueue.add(request)
+    }
+    
+    /**
      * Update notification preference
      */
     fun updateNotificationPreference(
@@ -446,7 +752,7 @@ class VolleyClient(context: Context) {
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
-        val url = "http://10.0.2.2:5180/nastavitve/update-notification-preference"
+        val url = "${BASE_URL}settings/notifications"
         
         val jsonBody = JSONObject().apply {
             put("enableNotifications", enableNotifications)
@@ -472,7 +778,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
@@ -516,7 +824,9 @@ class VolleyClient(context: Context) {
             }
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = super.getHeaders() ?: mutableMapOf()
+                val superHeaders = super.getHeaders() ?: emptyMap()
+                val headers = mutableMapOf<String, String>()
+                headers.putAll(superHeaders)
                 getAuthHeaders().forEach { (key, value) -> headers[key] = value }
                 return headers
             }
