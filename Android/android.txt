@@ -1,2 +1,0 @@
-In this folder we will make android app, which includes only 
-landing page and login, register and so on.
