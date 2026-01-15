@@ -9,15 +9,53 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/availability/my")]
-[Authorize(Roles = "Worker")]
+[Authorize(Roles = "Worker,Admin")]
 public class AvailabilityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private const int MinDurationMinutes = 240; // 4 hours - hardcoded for now
 
     public AvailabilityController(ApplicationDbContext context)
     {
         _context = context;
+    }
+
+    private async Task<int> GetMinDurationMinutesAsync()
+    {
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "MinTimeRangeHours");
+        
+        if (setting != null && double.TryParse(setting.Value, out var hours))
+        {
+            return (int)(hours * 60);
+        }
+        
+        return 240; // Default: 4 hours
+    }
+
+    private async Task<(TimeOnly StartTime, TimeOnly EndTime)> GetAllowedTimeWindowAsync()
+    {
+        var startTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var endTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var startTime = TimeOnly.Parse("07:00"); // Default: 07:00
+        var endTime = TimeOnly.Parse("23:00"); // Default: 23:00
+        
+        if (startTimeSetting != null && !string.IsNullOrEmpty(startTimeSetting.Value) && 
+            TimeOnly.TryParse(startTimeSetting.Value, out var parsedStartTime))
+        {
+            startTime = parsedStartTime;
+        }
+        
+        if (endTimeSetting != null && !string.IsNullOrEmpty(endTimeSetting.Value) && 
+            TimeOnly.TryParse(endTimeSetting.Value, out var parsedEndTime))
+        {
+            endTime = parsedEndTime;
+        }
+        
+        return (startTime, endTime);
     }
 
     public record AvailabilityEntryDto(string Date, string Type, string? StartTime, string? EndTime);
@@ -102,13 +140,29 @@ public class AvailabilityController : ControllerBase
         var existingSubmission = await _context.AvailabilitySubmissions
             .FirstOrDefaultAsync(s => s.UserId == userId && s.AvailabilityMonthId == month.Id);
 
-        if (existingSubmission != null)
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // If lock after initial submission is enabled and submission already exists, prevent creating new one
+        if (lockAfterSubmission && existingSubmission != null && existingSubmission.SubmittedAtUtc != default)
+        {
+            return BadRequest(new { error = "Submission already exists and editing is not allowed after initial submission. This setting is enabled by the administrator." });
+        }
+
+        if (existingSubmission != null && !lockAfterSubmission)
         {
             return Conflict(new { error = "Submission already exists for this month. Use PUT to update." });
         }
 
         // Validate entries
-        var validationError = ValidateEntries(request.Entries);
+        var validationError = await ValidateEntriesAsync(request.Entries);
         if (validationError != null)
         {
             return BadRequest(new { error = validationError });
@@ -143,7 +197,124 @@ public class AvailabilityController : ControllerBase
             new { message = "Submission created successfully", submissionId = submission.Id });
     }
 
-    private string? ValidateEntries(List<AvailabilityEntryDto> entries)
+    [HttpPut("submissions/{id}")]
+    public async Task<ActionResult> UpdateAvailabilitySubmission(int id, CreateAvailabilityRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        // Find submission and verify ownership
+        var submission = await _context.AvailabilitySubmissions
+            .Include(s => s.Entries)
+            .Include(s => s.AvailabilityMonth)
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId);
+
+        if (submission == null)
+        {
+            return NotFound(new { error = "Submission not found or you don't have permission to update it" });
+        }
+
+        // Verify monthKey matches
+        if (submission.AvailabilityMonth.MonthKey != request.MonthKey)
+        {
+            return BadRequest(new { error = "MonthKey mismatch. Cannot change month of existing submission." });
+        }
+
+        // Check if month is still unlocked and not locked yet
+        if (!submission.AvailabilityMonth.IsUnlocked)
+        {
+            return BadRequest(new { error = "Month is not unlocked for submissions" });
+        }
+
+        if (submission.AvailabilityMonth.LockDateTimeUtc.HasValue && submission.AvailabilityMonth.LockDateTimeUtc.Value <= DateTime.UtcNow)
+        {
+            return BadRequest(new { error = "Submission deadline has passed for this month" });
+        }
+
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // If lock after initial submission is enabled and submission already exists, prevent editing
+        if (lockAfterSubmission && submission.SubmittedAtUtc != default)
+        {
+            return BadRequest(new { error = "Editing is not allowed after initial submission. This setting is enabled by the administrator." });
+        }
+
+        // Validate entries
+        var validationError = await ValidateEntriesAsync(request.Entries);
+        if (validationError != null)
+        {
+            return BadRequest(new { error = validationError });
+        }
+
+        // Delete old entries
+        _context.AvailabilityEntries.RemoveRange(submission.Entries);
+        submission.Entries.Clear();
+
+        // Add new entries
+        foreach (var entryDto in request.Entries)
+        {
+            var entry = new AvailabilityEntry
+            {
+                Date = DateOnly.Parse(entryDto.Date),
+                Type = Enum.Parse<AvailabilityType>(entryDto.Type),
+                StartTime = entryDto.StartTime != null ? TimeOnly.Parse(entryDto.StartTime) : null,
+                EndTime = entryDto.EndTime != null ? TimeOnly.Parse(entryDto.EndTime) : null
+            };
+            submission.Entries.Add(entry);
+        }
+
+        submission.SubmittedAtUtc = DateTime.UtcNow;
+        submission.Status = "Submitted";
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Submission updated successfully", submissionId = submission.Id });
+    }
+
+    [HttpDelete("submissions/{id}")]
+    public async Task<ActionResult> DeleteAvailabilitySubmission(int id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        // Find submission and verify ownership
+        var submission = await _context.AvailabilitySubmissions
+            .Include(s => s.AvailabilityMonth)
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId);
+
+        if (submission == null)
+        {
+            return NotFound(new { error = "Submission not found or you don't have permission to delete it" });
+        }
+
+        // Check if month is still unlocked (can't delete after lock)
+        if (submission.AvailabilityMonth.LockDateTimeUtc.HasValue && submission.AvailabilityMonth.LockDateTimeUtc.Value <= DateTime.UtcNow)
+        {
+            return BadRequest(new { error = "Cannot delete submission after the deadline has passed" });
+        }
+
+        // Delete submission (entries will cascade delete)
+        _context.AvailabilitySubmissions.Remove(submission);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Submission deleted successfully" });
+    }
+
+    private async Task<string?> ValidateEntriesAsync(List<AvailabilityEntryDto> entries)
     {
         foreach (var entry in entries)
         {
@@ -192,11 +363,24 @@ public class AvailabilityController : ControllerBase
                     return "EndTime must be greater than StartTime";
                 }
 
-                // Validate minimum duration (4 hours)
+                // Validate minimum duration (from settings)
+                var minDurationMinutes = await GetMinDurationMinutesAsync();
                 var duration = endTime - startTime;
-                if (duration.TotalMinutes < MinDurationMinutes)
+                if (duration.TotalMinutes < minDurationMinutes)
                 {
-                    return $"TimeRange duration must be at least {MinDurationMinutes} minutes ({MinDurationMinutes / 60} hours)";
+                    var hours = minDurationMinutes / 60.0;
+                    return $"TimeRange duration must be at least {minDurationMinutes} minutes ({hours} hours)";
+                }
+
+                // Validate time window (from settings)
+                var (allowedStartTime, allowedEndTime) = await GetAllowedTimeWindowAsync();
+                if (startTime < allowedStartTime)
+                {
+                    return $"StartTime ({startTime:HH:mm}) must be at or after the allowed start time ({allowedStartTime:HH:mm})";
+                }
+                if (endTime > allowedEndTime)
+                {
+                    return $"EndTime ({endTime:HH:mm}) must be at or before the allowed end time ({allowedEndTime:HH:mm})";
                 }
             }
         }

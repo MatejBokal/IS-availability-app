@@ -1,0 +1,531 @@
+@using AvailabilityCollector.Models
+@{
+    ViewData["Title"] = "Oddaj razpoložljivost - " + ViewBag.MonthKey;
+    var month = ViewBag.Month as AvailabilityMonth;
+    var daysInMonth = (int)ViewBag.DaysInMonth;
+    var firstDay = (DateOnly)ViewBag.FirstDay;
+    var holidays = ViewBag.Holidays as List<Holiday> ?? new List<Holiday>();
+    var submission = ViewBag.Submission as AvailabilitySubmission;
+    var minDurationMinutes = (int)ViewBag.MinDurationMinutes;
+    var allowedStartTime = ViewBag.AllowedStartTime as string ?? "07:00";
+    var allowedEndTime = ViewBag.AllowedEndTime as string ?? "23:00";
+    var monthKey = ViewBag.MonthKey as string;
+    
+    var isLocked = !month.IsUnlocked || (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow);
+    
+    // Parse month parts
+    var monthParts = monthKey.Split('-');
+    var year = int.Parse(monthParts[1]);
+    var monthNum = int.Parse(monthParts[0]);
+    
+    // Create set of holiday dates
+    var holidayDates = holidays.Select(h => h.Date).ToHashSet();
+    
+    // Load existing entries if submission exists
+    var existingEntries = new Dictionary<DateOnly, AvailabilityEntry>();
+    if (submission != null)
+    {
+        foreach (var entry in submission.Entries)
+        {
+            existingEntries[entry.Date] = entry;
+        }
+    }
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Oddaj razpoložljivost - @monthKey</h1>
+        <div>
+            <a href="@Url.Action("OddajRazpolozljivost", "Worker")" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Nazaj
+            </a>
+        </div>
+    </div>
+
+    @if (isLocked)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-lock"></i> Ta mesec je zaklenjen in ga ni mogoče urejati. Samo pregled je na voljo.
+        </div>
+    }
+
+    <!-- Calendar Grid -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm" id="calendarGrid">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 14.28%;">Pon</th>
+                            <th style="width: 14.28%;">Tor</th>
+                            <th style="width: 14.28%;">Sre</th>
+                            <th style="width: 14.28%;">Čet</th>
+                            <th style="width: 14.28%;">Pet</th>
+                            <th style="width: 14.28%;">Sob</th>
+                            <th style="width: 14.28%;">Ned</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calendarBody">
+                        @{
+                            // Calculate how many days to pad before the first day of the month
+                            var firstDayOfWeek = (int)firstDay.DayOfWeek;
+                            // Convert to Monday=0, Sunday=6 format (Slovenian week starts Monday)
+                            var dayOffset = firstDayOfWeek == 0 ? 6 : firstDayOfWeek - 1;
+                            
+                            // Add padding cells for days before the first day
+                            @:<tr>
+                            for (int i = 0; i < dayOffset; i++)
+                            {
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
+                            }
+                            
+                            var currentDate = firstDay;
+                            while (currentDate <= firstDay.AddMonths(1).AddDays(-1))
+                            {
+                                var dayNum = currentDate.Day;
+                                var isHoliday = holidayDates.Contains(currentDate);
+                                var dayOfWeek = currentDate.DayOfWeek;
+                                var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                                var isCurrentMonth = currentDate >= firstDay && currentDate <= firstDay.AddMonths(1).AddDays(-1);
+                                var entry = existingEntries.ContainsKey(currentDate) ? existingEntries[currentDate] : null;
+                                
+                                string cellClass = "calendar-day text-center";
+                                if (!isCurrentMonth)
+                                {
+                                    cellClass += " text-muted bg-light";
+                                }
+                                else if (isWeekend || isHoliday)
+                                {
+                                    cellClass += " bg-secondary bg-opacity-10";
+                                }
+                                
+                                if (entry != null)
+                                {
+                                    switch (entry.Type)
+                                    {
+                                        case AvailabilityType.FullDay:
+                                            cellClass += " bg-success bg-opacity-50";
+                                            break;
+                                        case AvailabilityType.TimeRange:
+                                            cellClass += " bg-warning bg-opacity-50";
+                                            break;
+                                        case AvailabilityType.Unavailable:
+                                            cellClass += " bg-danger bg-opacity-50";
+                                            break;
+                                    }
+                                }
+                                
+                                <td class="@cellClass" 
+                                    data-date="@currentDate.ToString("yyyy-MM-dd")"
+                                    data-day="@dayNum"
+                                    data-month="@(isCurrentMonth ? "current" : "other")"
+                                    onclick="@(!isLocked && isCurrentMonth ? "toggleDateSelection('" + currentDate.ToString("yyyy-MM-dd") + "')" : "")"
+                                    style="cursor: @(isLocked || !isCurrentMonth ? "default" : "pointer"); min-height: 60px; position: relative;">
+                                    @if (isCurrentMonth)
+                                    {
+                                        <div style="font-weight: bold;">@dayNum</div>
+                                        @if (entry != null)
+                                        {
+                                            if (entry.Type == AvailabilityType.TimeRange)
+                                            {
+                                                <div style="font-size: 0.7em; margin-top: 2px;" class="time-display" data-time="@(entry.StartTime?.ToString("HH:mm") + "-" + entry.EndTime?.ToString("HH:mm"))">
+                                                    @(entry.StartTime?.ToString("HH:mm") ?? "")-@(entry.EndTime?.ToString("HH:mm") ?? "")
+                                                </div>
+                                            }
+                                        }
+                                        @if (isHoliday)
+                                        {
+                                            var holiday = holidays.FirstOrDefault(h => h.Date == currentDate);
+                                            <div style="font-size: 0.65em; margin-top: 2px;" class="text-muted">@(holiday?.Name ?? "")</div>
+                                        }
+                                    }
+                                </td>
+                                
+                                // Start new row on Sunday (end of week)
+                                if (dayOfWeek == DayOfWeek.Sunday)
+                                {
+                                    @:</tr>
+                                    @:<tr>
+                                }
+                                
+                                currentDate = currentDate.AddDays(1);
+                            }
+                            
+                            // Close last row - add padding cells for remaining days in the week
+                            var lastDayOfWeek = (int)currentDate.AddDays(-1).DayOfWeek;
+                            var lastDayOffset = lastDayOfWeek == 0 ? 0 : 7 - lastDayOfWeek;
+                            for (int i = 0; i < lastDayOffset; i++)
+                            {
+                                <td class="text-muted bg-light" style="min-height: 60px;"></td>
+                            }
+                            @:</tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selection Controls -->
+    <div id="selectionControls" class="card mb-3" style="display: none;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <strong>Izbrano: <span id="selectedCount">0</span> dni</strong>
+                    <div id="selectedDatesList" class="small text-muted mt-1"></div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                    <i class="bi bi-x-circle"></i> Počisti izbor
+                </button>
+            </div>
+            
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-success w-100" onclick="setAvailability('FullDay')">
+                        <i class="bi bi-check-circle"></i> Na voljo
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-warning w-100" onclick="setAvailability('TimeRange')">
+                        <i class="bi bi-clock"></i> Delno
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-danger w-100" onclick="setAvailability('Unavailable')">
+                        <i class="bi bi-x-circle"></i> Ni na voljo
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Time Range Input (shown when "Delno" is selected) -->
+            <div id="timeRangeInput" style="display: none;">
+                <label class="form-label">Čas:</label>
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <input type="time" id="timeStart" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="8:00">
+                    </div>
+                    <div class="col-md-2 text-center align-self-center">-</div>
+                    <div class="col-md-5">
+                        <input type="time" id="timeEnd" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="15:00">
+                    </div>
+                </div>
+                <small class="text-muted">
+                    Dovoljeni časovni razpon: @allowedStartTime - @allowedEndTime<br />
+                    Minimalna dolžina: @(minDurationMinutes / 60) ur
+                </small>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-warning" onclick="applyTimeRange()">
+                        <i class="bi bi-check"></i> Potrdi čas
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <strong>Legenda:</strong>
+            <div class="d-flex flex-wrap gap-3 mt-2">
+                <div><span class="badge bg-success text-white me-1">✓</span> Na voljo</div>
+                <div><span class="badge bg-warning me-1"><i class="bi bi-clock"></i></span> Delno</div>
+                <div><span class="badge bg-danger text-white me-1">✗</span> Ni na voljo</div>
+                <div><span class="text-muted">Sivo</span> Vikend/Praznik</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit Button -->
+    @if (!isLocked)
+    {
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="btn btn-primary btn-lg" onclick="submitAvailability()" id="submitBtn">
+                <i class="bi bi-save"></i> Shrani razpoložljivost
+            </button>
+        </div>
+    }
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="bi me-2" id="toastIcon"></i>
+                <strong class="me-auto" id="toastTitle">Obvestilo</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toastMessage"></div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const monthKey = '@monthKey';
+        const minDurationMinutes = @minDurationMinutes;
+        const allowedStartTime = '@allowedStartTime';
+        const allowedEndTime = '@allowedEndTime';
+        const submissionId = @(submission?.Id ?? 0);
+        const isLocked = @(isLocked ? "true" : "false");
+        
+        let selectedDates = new Set();
+        let availability = {};
+        let pendingTimeRange = null;
+        
+        // Load existing availability
+        @if (submission != null && submission.Entries.Any())
+        {
+            foreach (var entry in submission.Entries)
+            {
+                <text>
+                availability['@entry.Date.ToString("yyyy-MM-dd")'] = {
+                    type: '@entry.Type',
+                    startTime: '@(entry.StartTime?.ToString("HH:mm") ?? "")',
+                    endTime: '@(entry.EndTime?.ToString("HH:mm") ?? "")'
+                };
+                </text>
+            }
+        }
+
+        function toggleDateSelection(dateStr) {
+            if (isLocked) return;
+            
+            const cell = document.querySelector(`[data-date="${dateStr}"]`);
+            if (!cell || cell.getAttribute('data-month') !== 'current') return;
+            
+            if (selectedDates.has(dateStr)) {
+                selectedDates.delete(dateStr);
+                cell.classList.remove('border', 'border-primary', 'border-3');
+            } else {
+                selectedDates.add(dateStr);
+                cell.classList.add('border', 'border-primary', 'border-3');
+            }
+            
+            updateSelectionControls();
+        }
+
+        function updateSelectionControls() {
+            const count = selectedDates.size;
+            const controlsDiv = document.getElementById('selectionControls');
+            const countSpan = document.getElementById('selectedCount');
+            const datesList = document.getElementById('selectedDatesList');
+            
+            if (count > 0) {
+                controlsDiv.style.display = 'block';
+                countSpan.textContent = count;
+                
+                const sortedDates = Array.from(selectedDates).sort();
+                if (count <= 5) {
+                    datesList.textContent = sortedDates.join(', ');
+                } else {
+                    datesList.textContent = sortedDates.slice(0, 5).join(', ') + '...';
+                }
+                
+                // Check if any selected date has TimeRange
+                const hasTimeRange = Array.from(selectedDates).some(d => 
+                    availability[d] && availability[d].type === 'TimeRange'
+                );
+                if (hasTimeRange && pendingTimeRange === null) {
+                    // Show existing time if all selected have same time
+                    const times = Array.from(selectedDates)
+                        .map(d => availability[d])
+                        .filter(a => a && a.type === 'TimeRange')
+                        .map(a => a.startTime + '-' + a.endTime);
+                    const uniqueTimes = [...new Set(times)];
+                    if (uniqueTimes.length === 1) {
+                        const [start, end] = uniqueTimes[0].split('-');
+                        document.getElementById('timeStart').value = start;
+                        document.getElementById('timeEnd').value = end;
+                    }
+                }
+            } else {
+                controlsDiv.style.display = 'none';
+                document.getElementById('timeRangeInput').style.display = 'none';
+                pendingTimeRange = null;
+            }
+        }
+
+        function clearSelection() {
+            selectedDates.forEach(dateStr => {
+                const cell = document.querySelector(`[data-date="${dateStr}"]`);
+                if (cell) {
+                    cell.classList.remove('border', 'border-primary', 'border-3');
+                }
+            });
+            selectedDates.clear();
+            updateSelectionControls();
+        }
+
+        function setAvailability(type) {
+            if (selectedDates.size === 0) return;
+            
+            if (type === 'TimeRange') {
+                document.getElementById('timeRangeInput').style.display = 'block';
+                pendingTimeRange = 'TimeRange';
+            } else {
+                applyAvailability(type, null, null);
+            }
+        }
+
+        function applyTimeRange() {
+            const startTime = document.getElementById('timeStart').value;
+            const endTime = document.getElementById('timeEnd').value;
+            
+            if (!startTime || !endTime) {
+                showToast('Prosimo, vnesite oba časovna podatka.', 'error');
+                return;
+            }
+            
+            // Validate time format
+            const start = new Date(`2000-01-01T${startTime}`);
+            const end = new Date(`2000-01-01T${endTime}`);
+            
+            if (end <= start) {
+                showToast('Končni čas mora biti za začetnim časom.', 'error');
+                return;
+            }
+            
+            // Validate allowed time window
+            const allowedStart = new Date(`2000-01-01T${allowedStartTime}`);
+            const allowedEnd = new Date(`2000-01-01T${allowedEndTime}`);
+            
+            if (start < allowedStart) {
+                showToast(`Začetni čas mora biti najmanj ${allowedStartTime}.`, 'error');
+                return;
+            }
+            
+            if (end > allowedEnd) {
+                showToast(`Končni čas mora biti največ ${allowedEndTime}.`, 'error');
+                return;
+            }
+            
+            // Validate minimum duration
+            const durationMinutes = (end - start) / (1000 * 60);
+            
+            if (durationMinutes < minDurationMinutes) {
+                showToast(`Časovni razpon mora biti vsaj ${minDurationMinutes / 60} ur.`, 'error');
+                return;
+            }
+            
+            applyAvailability('TimeRange', startTime, endTime);
+        }
+
+        function applyAvailability(type, startTime, endTime) {
+            selectedDates.forEach(dateStr => {
+                availability[dateStr] = {
+                    type: type,
+                    startTime: startTime || '',
+                    endTime: endTime || ''
+                };
+                
+                updateCell(dateStr);
+            });
+            
+            document.getElementById('timeRangeInput').style.display = 'none';
+            document.getElementById('timeStart').value = '';
+            document.getElementById('timeEnd').value = '';
+            pendingTimeRange = null;
+            clearSelection();
+        }
+
+        function updateCell(dateStr) {
+            const cell = document.querySelector(`[data-date="${dateStr}"]`);
+            if (!cell) return;
+            
+            // Remove existing status classes
+            cell.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-opacity-50', 'text-white');
+            
+            const entry = availability[dateStr];
+            if (!entry) {
+                cell.innerHTML = `<div style="font-weight: bold;">${cell.getAttribute('data-day')}</div>`;
+                return;
+            }
+            
+            let content = `<div style="font-weight: bold;">${cell.getAttribute('data-day')}</div>`;
+            
+            if (entry.type === 'FullDay') {
+                cell.classList.add('bg-success', 'bg-opacity-50');
+            } else if (entry.type === 'Unavailable') {
+                cell.classList.add('bg-danger', 'bg-opacity-50');
+            } else if (entry.type === 'TimeRange') {
+                cell.classList.add('bg-warning', 'bg-opacity-50');
+                content += `<div style="font-size: 0.7em; margin-top: 2px;" class="time-display">${entry.startTime}-${entry.endTime}</div>`;
+            }
+            
+            cell.innerHTML = content;
+        }
+
+        async function submitAvailability() {
+            if (isLocked) {
+                showToast('Ta mesec je zaklenjen in ga ni mogoče urejati.', 'error');
+                return;
+            }
+            
+            // Convert availability to API format
+            const entries = [];
+            for (const [dateStr, entry] of Object.entries(availability)) {
+                entries.push({
+                    date: dateStr,
+                    type: entry.type,
+                    startTime: entry.startTime || null,
+                    endTime: entry.endTime || null
+                });
+            }
+            
+            const url = submissionId > 0 
+                ? `/api/availability/my/submissions/${submissionId}`
+                : '/api/availability/my/submissions';
+            
+            const method = submissionId > 0 ? 'PUT' : 'POST';
+            
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        monthKey: monthKey,
+                        entries: entries
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showToast('Razpoložljivost je bila uspešno shranjena.', 'success');
+                    setTimeout(() => {
+                        window.location.href = '@Url.Action("OddajRazpolozljivost", "Worker")';
+                    }, 1500);
+                } else {
+                    showToast('Napaka: ' + (result.error || 'Neznana napaka'), 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Napaka pri shranjevanju razpoložljivosti.', 'error');
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            const toastTitle = document.getElementById('toastTitle');
+            
+            toastMessage.textContent = message;
+            
+            if (type === 'success') {
+                toastIcon.className = 'bi bi-check-circle-fill text-success me-2';
+                toastTitle.textContent = 'Uspešno';
+            } else {
+                toastIcon.className = 'bi bi-exclamation-triangle-fill text-danger me-2';
+                toastTitle.textContent = 'Napaka';
+            }
+            
+            const bsToast = new bootstrap.Toast(toast, {
+                autohide: true,
+                delay: 3000
+            });
+            bsToast.show();
+        }
+    </script>
+}

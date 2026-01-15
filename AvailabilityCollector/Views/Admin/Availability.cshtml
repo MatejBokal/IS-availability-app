@@ -1,0 +1,409 @@
+@model AvailabilityCollector.Controllers.AvailabilityTableViewModel
+@using AvailabilityCollector.Models
+@{
+    ViewData["Title"] = "Razpoložljivost - " + Model.MonthKey;
+    var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
+    var employmentTypes = ViewBag.EmploymentTypes as List<EmploymentType> ?? new List<EmploymentType>();
+    var month = ViewBag.Month as AvailabilityMonth;
+    var holidays = ViewBag.Holidays as List<Holiday> ?? new List<Holiday>();
+    
+    // Parse month to get days
+    var monthParts = Model.MonthKey.Split('-');
+    var year = int.Parse(monthParts[1]);
+    var monthNum = int.Parse(monthParts[0]);
+    var firstDay = new DateOnly(year, monthNum, 1);
+    var lastDay = firstDay.AddMonths(1).AddDays(-1);
+    var daysInMonth = lastDay.Day;
+    
+    // Create dictionary for quick lookup
+    var submissionDict = Model.Submissions.ToDictionary(s => s.UserId);
+    
+    // Create set of holiday dates for quick lookup
+    var holidayDates = holidays.Select(h => h.Date).ToHashSet();
+    
+    // Get filter values
+    var selectedPositionFilter = ViewBag.SelectedPositionFilter as string;
+    var selectedEmploymentTypeFilter = ViewBag.SelectedEmploymentTypeFilter as string;
+}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Razpoložljivost - @Model.MonthKey</h1>
+        <div>
+            <a href="@Url.Action("Razpolozljivosti", "Admin")" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Poglej ostale oddaje
+            </a>
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Pozicija:</label>
+                    <select id="positionFilter" class="form-select">
+                        <option value="">Vse pozicije</option>
+                        @foreach (var pos in positions)
+                        {
+                            <option value="@pos.Name" selected="@(selectedPositionFilter == pos.Name)">@pos.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Vrsta zaposlitve:</label>
+                    <select id="employmentTypeFilter" class="form-select">
+                        <option value="">Vse vrste</option>
+                        <option value="RednoZaposleni" selected="@(selectedEmploymentTypeFilter == "RednoZaposleni")">Redno zaposleni</option>
+                        <option value="Studenti" selected="@(selectedEmploymentTypeFilter == "Studenti")">Študenti</option>
+                        <option value="SP" selected="@(selectedEmploymentTypeFilter == "SP")">s.p.</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="button" class="btn btn-secondary w-100" onclick="clearFilters()">
+                        <i class="bi bi-x-circle"></i> Počisti filtre
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Availability Table -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm" id="availabilityTable">
+            <tbody id="availabilityTableBody">
+                @{
+                    // Group employees by primary position
+                    var employeesByPosition = Model.Employees
+                        .GroupBy(e => e.Position ?? "")
+                        .Where(g => g.Any()) // Only positions with employees
+                        .OrderBy(g => g.Key == "" ? 1 : 0) // Empty positions last
+                        .ThenBy(g => g.Key)
+                        .ToList();
+                    
+                    var shownEmployeeIds = new HashSet<string>(); // Track shown employees when filter is applied
+                }
+                
+                @if (string.IsNullOrEmpty(selectedPositionFilter))
+                {
+                    // No filter: Group by primary position with headers
+                    @foreach (var positionGroup in employeesByPosition)
+                    {
+                        var positionName = positionGroup.Key;
+                        var positionEmployees = positionGroup.OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToList();
+                        
+                        // Position header row - only show if there are employees with submissions or potential submissions
+                        <tr class="position-header-row">
+                            <td style="position: sticky; left: 0; background: white; z-index: 5;">
+                                <strong>@(string.IsNullOrEmpty(positionName) ? "OSTALI" : positionName.ToUpper())</strong>
+                            </td>
+                            @for (int day = 1; day <= daysInMonth; day++)
+                            {
+                                var date = new DateOnly(year, monthNum, day);
+                                var dayOfWeek = date.DayOfWeek;
+                                var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                                var isHoliday = holidayDates.Contains(date);
+                                var isSpecialDay = isWeekend || isHoliday;
+                                
+                                <th class="text-center @(isSpecialDay ? "bg-secondary bg-opacity-25" : "")" style="min-width: 60px;">
+                                    <div>@day</div>
+                                    <small class="text-muted">@date.ToString("ddd", new System.Globalization.CultureInfo("sl-SI"))</small>
+                                    @if (isHoliday)
+                                    {
+                                        var holiday = holidays.FirstOrDefault(h => h.Date == date);
+                                        <br /><small class="text-muted" style="font-size: 0.7em;">@(holiday?.Name ?? "")</small>
+                                    }
+                                </th>
+                            }
+                        </tr>
+                        
+                        // Employee rows for this position
+                        @foreach (var employee in positionEmployees)
+                        {
+                            var submission = submissionDict.ContainsKey(employee.Id) ? submissionDict[employee.Id] : null;
+                            var entriesDict = submission?.Entries.ToDictionary(e => e.Date) ?? new Dictionary<DateOnly, AvailabilityEntry>();
+                            
+                            <tr data-position="@(employee.Position ?? "")" 
+                                data-employment-type="@(employee.EmploymentType?.ToString() ?? "")"
+                                data-primary-position="@(employee.Position ?? "")"
+                                class="employee-row">
+                                <td style="position: sticky; left: 0; background: white; z-index: 5;">
+                                    <strong>@(employee.FirstName ?? "") @(employee.LastName ?? "")</strong>
+                                </td>
+                                @for (int day = 1; day <= daysInMonth; day++)
+                                {
+                                    var date = new DateOnly(year, monthNum, day);
+                                    var entry = entriesDict.ContainsKey(date) ? entriesDict[date] : null;
+                                    var dayOfWeek = date.DayOfWeek;
+                                    var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                                    var isHoliday = holidayDates.Contains(date);
+                                    var isSpecialDay = isWeekend || isHoliday;
+                                    
+                                    string cellClass = "text-center";
+                                    string cellContent = "";
+                                    string title = "";
+                                    
+                                    if (entry == null)
+                                    {
+                                        if (isSpecialDay)
+                                        {
+                                            cellClass += " bg-secondary bg-opacity-10";
+                                        }
+                                        else
+                                        {
+                                            cellClass += " bg-white";
+                                        }
+                                        cellContent = "-";
+                                        title = "Ni oddane razpoložljivosti";
+                                    }
+                                    else
+                                    {
+                                        switch (entry.Type)
+                                        {
+                                            case AvailabilityType.FullDay:
+                                                cellClass += " bg-success bg-opacity-50";
+                                                cellContent = "";
+                                                title = "Na voljo cel dan";
+                                                break;
+                                            case AvailabilityType.TimeRange:
+                                                cellClass += " bg-warning bg-opacity-50";
+                                                var timeRange = $"{entry.StartTime?.ToString("HH:mm") ?? ""}-{entry.EndTime?.ToString("HH:mm") ?? ""}";
+                                                cellContent = $"<small style='font-size: 0.75em;'>{timeRange}</small>";
+                                                title = $"Na voljo: {entry.StartTime?.ToString("HH:mm")} - {entry.EndTime?.ToString("HH:mm")}";
+                                                break;
+                                            case AvailabilityType.Unavailable:
+                                                cellClass += " bg-danger bg-opacity-50";
+                                                cellContent = "";
+                                                title = "Ni na voljo";
+                                                break;
+                                        }
+                                        
+                                        if (isSpecialDay)
+                                        {
+                                            cellClass += " bg-secondary bg-opacity-10";
+                                        }
+                                    }
+                                    
+                                    <td class="@cellClass" title="@title" style="font-size: 0.85em;">
+                                        @Html.Raw(cellContent)
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    }
+                }
+                else
+                {
+                    // Filter applied: Primary first, then secondary (grayed out)
+                    // Primary position employees
+                    var primaryEmployees = Model.Employees
+                        .Where(e => (e.Position ?? "").Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(e => e.LastName)
+                        .ThenBy(e => e.FirstName)
+                        .ToList();
+                    
+                    @foreach (var employee in primaryEmployees)
+                    {
+                        shownEmployeeIds.Add(employee.Id);
+                        var submission = submissionDict.ContainsKey(employee.Id) ? submissionDict[employee.Id] : null;
+                        var entriesDict = submission?.Entries.ToDictionary(e => e.Date) ?? new Dictionary<DateOnly, AvailabilityEntry>();
+                        
+                        <tr data-position="@(employee.Position ?? "")" 
+                            data-employment-type="@(employee.EmploymentType?.ToString() ?? "")"
+                            data-primary-position="@(employee.Position ?? "")"
+                            class="employee-row">
+                            <td style="position: sticky; left: 0; background: white; z-index: 5;">
+                                <strong>@(employee.FirstName ?? "") @(employee.LastName ?? "")</strong>
+                            </td>
+                            @for (int day = 1; day <= daysInMonth; day++)
+                            {
+                                var date = new DateOnly(year, monthNum, day);
+                                var entry = entriesDict.ContainsKey(date) ? entriesDict[date] : null;
+                                var dayOfWeek = date.DayOfWeek;
+                                var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                                var isHoliday = holidayDates.Contains(date);
+                                var isSpecialDay = isWeekend || isHoliday;
+                                
+                                string cellClass = "text-center";
+                                string cellContent = "";
+                                string title = "";
+                                
+                                if (entry == null)
+                                {
+                                    if (isSpecialDay)
+                                    {
+                                        cellClass += " bg-secondary bg-opacity-10";
+                                    }
+                                    else
+                                    {
+                                        cellClass += " bg-white";
+                                    }
+                                    cellContent = "-";
+                                    title = "Ni oddane razpoložljivosti";
+                                }
+                                else
+                                {
+                                    switch (entry.Type)
+                                    {
+                                        case AvailabilityType.FullDay:
+                                            cellClass += " bg-success bg-opacity-50";
+                                            cellContent = "";
+                                            title = "Na voljo cel dan";
+                                            break;
+                                        case AvailabilityType.TimeRange:
+                                            cellClass += " bg-warning bg-opacity-50";
+                                            var timeRange = $"{entry.StartTime?.ToString("HH:mm") ?? ""}-{entry.EndTime?.ToString("HH:mm") ?? ""}";
+                                            cellContent = $"<small style='font-size: 0.75em;'>{timeRange}</small>";
+                                            title = $"Na voljo: {entry.StartTime?.ToString("HH:mm")} - {entry.EndTime?.ToString("HH:mm")}";
+                                            break;
+                                        case AvailabilityType.Unavailable:
+                                            cellClass += " bg-danger bg-opacity-50";
+                                            cellContent = "";
+                                            title = "Ni na voljo";
+                                            break;
+                                    }
+                                    
+                                    if (isSpecialDay)
+                                    {
+                                        cellClass += " bg-secondary bg-opacity-10";
+                                    }
+                                }
+                                
+                                <td class="@cellClass" title="@title" style="font-size: 0.85em;">
+                                    @Html.Raw(cellContent)
+                                </td>
+                            }
+                        </tr>
+                    }
+                    
+                    // Secondary position employees (grayed out)
+                    var secondaryEmployees = Model.Employees
+                        .Where(e => !shownEmployeeIds.Contains(e.Id) && 
+                                   !string.IsNullOrEmpty(e.SecondaryPositions) &&
+                                   e.SecondaryPositions.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                       .Any(sp => sp.Trim().Equals(selectedPositionFilter, StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(e => e.LastName)
+                        .ThenBy(e => e.FirstName)
+                        .ToList();
+                    
+                    @foreach (var employee in secondaryEmployees)
+                    {
+                        var submission = submissionDict.ContainsKey(employee.Id) ? submissionDict[employee.Id] : null;
+                        var entriesDict = submission?.Entries.ToDictionary(e => e.Date) ?? new Dictionary<DateOnly, AvailabilityEntry>();
+                        
+                        <tr data-position="@(employee.Position ?? "")" 
+                            data-employment-type="@(employee.EmploymentType?.ToString() ?? "")"
+                            data-primary-position="@(employee.Position ?? "")"
+                            class="employee-row secondary-position-row">
+                            <td style="position: sticky; left: 0; background: #f8f9fa; z-index: 5;" class="bg-secondary bg-opacity-25">
+                                <strong>@(employee.FirstName ?? "") @(employee.LastName ?? "")</strong>
+                            </td>
+                            @for (int day = 1; day <= daysInMonth; day++)
+                            {
+                                var date = new DateOnly(year, monthNum, day);
+                                var entry = entriesDict.ContainsKey(date) ? entriesDict[date] : null;
+                                var dayOfWeek = date.DayOfWeek;
+                                var isWeekend = dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+                                var isHoliday = holidayDates.Contains(date);
+                                var isSpecialDay = isWeekend || isHoliday;
+                                
+                                string cellClass = "text-center bg-secondary bg-opacity-25";
+                                string cellContent = "";
+                                string title = "";
+                                
+                                if (entry == null)
+                                {
+                                    if (isSpecialDay)
+                                    {
+                                        cellClass += " bg-secondary bg-opacity-10";
+                                    }
+                                    cellContent = "-";
+                                    title = "Ni oddane razpoložljivosti";
+                                }
+                                else
+                                {
+                                    switch (entry.Type)
+                                    {
+                                        case AvailabilityType.FullDay:
+                                            cellClass += " bg-success bg-opacity-25"; // Less opacity for secondary
+                                            cellContent = "";
+                                            title = "Na voljo cel dan";
+                                            break;
+                                        case AvailabilityType.TimeRange:
+                                            cellClass += " bg-warning bg-opacity-25"; // Less opacity for secondary
+                                            var timeRange = $"{entry.StartTime?.ToString("HH:mm") ?? ""}-{entry.EndTime?.ToString("HH:mm") ?? ""}";
+                                            cellContent = $"<small style='font-size: 0.75em;'>{timeRange}</small>";
+                                            title = $"Na voljo: {entry.StartTime?.ToString("HH:mm")} - {entry.EndTime?.ToString("HH:mm")}";
+                                            break;
+                                        case AvailabilityType.Unavailable:
+                                            cellClass += " bg-danger bg-opacity-25"; // Less opacity for secondary
+                                            cellContent = "";
+                                            title = "Ni na voljo";
+                                            break;
+                                    }
+                                    
+                                    if (isSpecialDay)
+                                    {
+                                        cellClass += " bg-secondary bg-opacity-10";
+                                    }
+                                }
+                                
+                                <td class="@cellClass" title="@title" style="font-size: 0.85em;">
+                                    @Html.Raw(cellContent)
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="d-flex justify-content-end mt-3">
+        <a href="@Url.Action("Analiza", "Admin", new { monthKey = Model.MonthKey })" class="btn btn-info">
+            <i class="bi bi-graph-up"></i> Analiza
+        </a>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function clearFilters() {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('position');
+            url.searchParams.delete('employmentType');
+            window.location.href = url.toString();
+        }
+        
+        function filterTable() {
+            const positionFilter = document.getElementById('positionFilter').value;
+            const employmentTypeFilter = document.getElementById('employmentTypeFilter').value;
+            
+            // Store selected position in ViewBag equivalent for server-side rendering
+            // For now, we'll reload the page with filter parameter
+            if (positionFilter) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('position', positionFilter);
+                if (employmentTypeFilter) {
+                    url.searchParams.set('employmentType', employmentTypeFilter);
+                } else {
+                    url.searchParams.delete('employmentType');
+                }
+                window.location.href = url.toString();
+            } else {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('position');
+                if (employmentTypeFilter) {
+                    url.searchParams.set('employmentType', employmentTypeFilter);
+                } else {
+                    url.searchParams.delete('employmentType');
+                }
+                window.location.href = url.toString();
+            }
+        }
+        
+        document.getElementById('positionFilter').addEventListener('change', filterTable);
+        document.getElementById('employmentTypeFilter').addEventListener('change', filterTable);
+    </script>
+}

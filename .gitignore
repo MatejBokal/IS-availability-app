@@ -2,6 +2,13 @@
 **/bin/
 **/obj/
 
+# Publish folders
+**/publish/
+**/publish-*/
+
+# Zip files
+*.zip
+
 # Visual Studio / VS Code
 .vs/
 .vscode/

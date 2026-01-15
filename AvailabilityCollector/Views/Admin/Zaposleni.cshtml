@@ -1,0 +1,604 @@
+@model List<AvailabilityCollector.Models.ApplicationUser>
+@using Microsoft.AspNetCore.Identity
+@using AvailabilityCollector.Models
+@inject UserManager<ApplicationUser> UserManager
+@{
+    ViewData["Title"] = "Zaposleni";
+    var positions = ViewBag.Positions as List<Position> ?? new List<Position>();
+    var employmentTypes = ViewBag.EmploymentTypes as List<EmploymentType> ?? new List<EmploymentType>();
+}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Zaposleni</h1>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#employeeModal" onclick="openAddEmployeeModal()">
+            <i class="bi bi-plus-circle"></i> Dodaj zaposlenega
+        </button>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Ime</th>
+                    <th>E-pošta</th>
+                    <th>Vrsta zaposlitve</th>
+                    <th>Pozicija</th>
+                    <th>Stranske pozicije</th>
+                    <th>Status</th>
+                    <th>Akcije</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var employee in Model.Where(e => e.IsActive))
+                {
+                    var isAdmin = await UserManager.IsInRoleAsync(employee, "Admin");
+                    <tr>
+                        <td>@(employee.FirstName ?? "") @(employee.LastName ?? "")</td>
+                        <td>@employee.Email</td>
+                        <td>@(employee.EmploymentType?.ToString() ?? "Ni določeno")</td>
+                        <td>@(employee.Position ?? "Ni pozicije")</td>
+                        <td>@(employee.SecondaryPositions ?? "-")</td>
+                        <td>
+                            @if (isAdmin)
+                            {
+                                <span class="badge bg-primary">Admin</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Aktiven</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editEmployee('@employee.Id', '@Html.Raw((employee.FirstName ?? "").Replace("'", "\\'"))', '@Html.Raw((employee.LastName ?? "").Replace("'", "\\'"))', '@employee.Email', '@Html.Raw((employee.Position ?? "").Replace("'", "\\'"))', '@(employee.EmploymentType?.ToString() ?? "")', '@Html.Raw((employee.SecondaryPositions ?? "").Replace("'", "\\'"))')">
+                                    <i class="bi bi-pencil"></i> Uredi
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" data-bs-boundary="viewport" data-bs-popper-config='{"modifiers":[{"name":"preventOverflow","options":{"boundary":"viewport"}},{"name":"flip","options":{"boundary":"viewport"}}]}'>
+                                    <span class="visually-hidden">Več akcij</span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" style="position: fixed !important;">
+                                    <li><a class="dropdown-item" href="#" onclick="generatePassword('@employee.Id', '@employee.Email')">Ustvari geslo</a></li>
+                                    @if (!isAdmin)
+                                    {
+                                        <li><a class="dropdown-item" href="#" onclick="assignAdminRole('@employee.Id')">Dodeli Admin vlogo</a></li>
+                                    }
+                                    else
+                                    {
+                                        <li><a class="dropdown-item" href="#" onclick="removeAdminRole('@employee.Id')">Odstrani Admin vlogo</a></li>
+                                    }
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-warning" href="#" onclick="setInactive('@employee.Id')">Nastavi kot neaktiven</a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteEmployee('@employee.Id')">Izbriši</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    @if (Model.Any(e => !e.IsActive))
+    {
+        <h3 class="mt-5 mb-3">Neaktivni zaposleni</h3>
+        <div class="table-responsive">
+            <table class="table table-hover table-secondary">
+                <thead>
+                    <tr>
+                        <th>Ime</th>
+                        <th>E-pošta</th>
+                        <th>Vrsta zaposlitve</th>
+                        <th>Pozicija</th>
+                        <th>Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var employee in Model.Where(e => !e.IsActive))
+                    {
+                        <tr class="opacity-50">
+                            <td>@(employee.FirstName ?? "") @(employee.LastName ?? "")</td>
+                            <td>@employee.Email</td>
+                            <td>@(employee.EmploymentType?.ToString() ?? "Ni določeno")</td>
+                            <td>@(employee.Position ?? "Ni pozicije")</td>
+                            <td>
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editEmployee('@employee.Id', '@Html.Raw((employee.FirstName ?? "").Replace("'", "\\'"))', '@Html.Raw((employee.LastName ?? "").Replace("'", "\\'"))', '@employee.Email', '@Html.Raw((employee.Position ?? "").Replace("'", "\\'"))', '@(employee.EmploymentType?.ToString() ?? "")', '@Html.Raw((employee.SecondaryPositions ?? "").Replace("'", "\\'"))')">
+                                        <i class="bi bi-pencil"></i> Uredi
+                                    </button>
+                                    <button class="btn btn-sm btn-success" onclick="setActive('@employee.Id')">Aktiviraj</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteEmployee('@employee.Id')">Izbriši</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Employee Modal -->
+<div class="modal fade" id="employeeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="employeeModalTitle">Dodaj zaposlenega</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="employeeForm">
+                <div class="modal-body">
+                    <input type="hidden" id="employeeUserId" />
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ime *</label>
+                            <input type="text" class="form-control" id="employeeFirstName" required />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Priimek *</label>
+                            <input type="text" class="form-control" id="employeeLastName" required />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">E-pošta *</label>
+                        <input type="email" class="form-control" id="employeeEmail" required />
+                        <small class="form-text text-muted" id="emailHelp" style="display: none;">E-pošta se lahko spremeni.</small>
+                    </div>
+                    <div id="passwordFields">
+                        <div class="mb-3">
+                            <label class="form-label">Geslo *</label>
+                            <input type="password" class="form-control" id="employeePassword" />
+                            <small class="form-text text-muted">Pustite prazno, če ne želite spremeniti gesla (pri urejanju).</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Vrsta zaposlitve</label>
+                            <select class="form-select" id="employeeEmploymentType">
+                                <option value="">Izberi...</option>
+                                <option value="RednoZaposleni">Redno zaposleni</option>
+                                <option value="Studenti">Študenti</option>
+                                <option value="SP">s.p.</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Pozicija</label>
+                            <div class="input-group">
+                                <select class="form-select" id="employeePosition">
+                                    <option value="">Izberi...</option>
+                                    @foreach (var pos in positions)
+                                    {
+                                        <option value="@pos.Name">@pos.Name</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="addNewPosition('employeePosition')">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Stranske pozicije</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select flex-grow-1" id="employeeSecondaryPositions" multiple size="4">
+                                @foreach (var pos in positions)
+                                {
+                                    <option value="@pos.Name">@pos.Name</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary align-self-start" onclick="addNewPosition('employeeSecondaryPositions')" title="Dodaj novo pozicijo">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">Držite Ctrl (ali Cmd na Mac) za izbiro več pozicij.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Prekliči</button>
+                    <button type="submit" class="btn btn-primary">Shrani</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Password Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ustvarjeno geslo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>E-pošta:</strong> <span id="passwordEmail"></span></p>
+                <p><strong>Geslo:</strong> <code id="passwordValue"></code></p>
+                <div class="alert alert-warning">
+                    <small>Zapomni si to geslo! Ne bo prikazano ponovno.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="sendEmailLink" class="btn btn-primary" target="_blank">
+                    <i class="bi bi-envelope"></i> Pošlji e-pošto
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zapri</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Fix dropdown positioning in table-responsive containers by moving to body
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropdowns = document.querySelectorAll('.table-responsive [data-bs-toggle="dropdown"]');
+            dropdowns.forEach(dropdown => {
+                const menu = dropdown.nextElementSibling;
+                if (!menu || !menu.classList.contains('dropdown-menu')) return;
+                
+                let originalParent = null;
+                let buttonRect = null;
+                
+                dropdown.addEventListener('show.bs.dropdown', function(e) {
+                    // Store original parent if not already stored
+                    if (!originalParent) {
+                        originalParent = menu.parentElement;
+                    }
+                    
+                    // Get button position before moving menu
+                    buttonRect = dropdown.getBoundingClientRect();
+                    
+                    // Only move if menu is still in original parent (avoid duplicates)
+                    if (menu.parentElement === originalParent) {
+                        // Move dropdown menu to body to escape overflow container
+                        document.body.appendChild(menu);
+                        menu.style.position = 'fixed';
+                        menu.style.zIndex = '1050';
+                    }
+                });
+                
+                dropdown.addEventListener('shown.bs.dropdown', function(e) {
+                    // Position menu relative to button
+                    if (buttonRect && menu.parentElement === document.body) {
+                        menu.style.top = (buttonRect.bottom + window.scrollY) + 'px';
+                        menu.style.left = 'auto';
+                        menu.style.right = (window.innerWidth - buttonRect.right) + 'px';
+                    }
+                });
+                
+                dropdown.addEventListener('hide.bs.dropdown', function(e) {
+                    // Move menu back to original position only if it's in body
+                    if (menu.parentElement === document.body && originalParent) {
+                        originalParent.appendChild(menu);
+                        menu.style.position = '';
+                        menu.style.top = '';
+                        menu.style.left = '';
+                        menu.style.right = '';
+                        menu.style.zIndex = '';
+                    }
+                });
+                
+                dropdown.addEventListener('hidden.bs.dropdown', function(e) {
+                    // Ensure menu is back in original position and clean up any duplicates
+                    if (menu.parentElement !== originalParent && originalParent) {
+                        // If menu is still in body, move it back
+                        if (menu.parentElement === document.body) {
+                            originalParent.appendChild(menu);
+                        }
+                        // Remove any duplicate menus that might be in body
+                        const duplicateMenus = document.body.querySelectorAll('.dropdown-menu');
+                        duplicateMenus.forEach(dup => {
+                            if (dup !== menu && dup.parentElement === document.body) {
+                                dup.remove();
+                            }
+                        });
+                        // Reset styles
+                        menu.style.position = '';
+                        menu.style.top = '';
+                        menu.style.left = '';
+                        menu.style.right = '';
+                        menu.style.zIndex = '';
+                    }
+                });
+            });
+        });
+        
+    </script>
+    <script>
+        function openAddEmployeeModal() {
+            document.getElementById('employeeModalTitle').textContent = 'Dodaj zaposlenega';
+            document.getElementById('employeeForm').reset();
+            document.getElementById('employeeUserId').value = '';
+            document.getElementById('passwordFields').style.display = 'block';
+            document.getElementById('employeePassword').required = true;
+            document.getElementById('employeeEmail').readOnly = false;
+            document.getElementById('emailHelp').style.display = 'none';
+            
+            // Clear secondary positions selection
+            const secondarySelect = document.getElementById('employeeSecondaryPositions');
+            Array.from(secondarySelect.options).forEach(option => {
+                option.selected = false;
+            });
+        }
+        
+        function editEmployee(userId, firstName, lastName, email, position, employmentType, secondaryPositions) {
+            document.getElementById('employeeModalTitle').textContent = 'Uredi zaposlenega';
+            document.getElementById('employeeUserId').value = userId;
+            document.getElementById('employeeFirstName').value = (firstName || '').replace(/'/g, "\\'");
+            document.getElementById('employeeLastName').value = (lastName || '').replace(/'/g, "\\'");
+            document.getElementById('employeeEmail').value = email;
+            document.getElementById('employeeEmail').readOnly = false;
+            document.getElementById('emailHelp').style.display = 'none';
+            
+            // Set position - check if it exists in dropdown, if not add it
+            const positionSelect = document.getElementById('employeePosition');
+            const positionValue = (position || '').trim();
+            if (positionValue) {
+                // Check if option exists
+                const positionExists = Array.from(positionSelect.options).some(opt => opt.value === positionValue);
+                if (!positionExists) {
+                    // Add the position to dropdown
+                    const option = document.createElement('option');
+                    option.value = positionValue;
+                    option.textContent = positionValue;
+                    positionSelect.appendChild(option);
+                }
+                positionSelect.value = positionValue;
+            } else {
+                positionSelect.value = '';
+            }
+            
+            // Set employment type
+            document.getElementById('employeeEmploymentType').value = employmentType || '';
+            
+            // Set secondary positions (comma-separated string to array)
+            const secondarySelect = document.getElementById('employeeSecondaryPositions');
+            const secondaryArray = (secondaryPositions || '').split(',').map(s => s.trim()).filter(s => s);
+            
+            // First, ensure all positions exist in the dropdown
+            secondaryArray.forEach(pos => {
+                const posExists = Array.from(secondarySelect.options).some(opt => opt.value === pos);
+                if (!posExists && pos) {
+                    const option = document.createElement('option');
+                    option.value = pos;
+                    option.textContent = pos;
+                    secondarySelect.appendChild(option);
+                }
+            });
+            
+            // Now select the positions
+            Array.from(secondarySelect.options).forEach(option => {
+                option.selected = secondaryArray.includes(option.value);
+            });
+            
+            document.getElementById('passwordFields').style.display = 'none';
+            document.getElementById('employeePassword').required = false;
+            new bootstrap.Modal(document.getElementById('employeeModal')).show();
+        }
+        
+        async function addNewPosition(selectId) {
+            const select = document.getElementById(selectId);
+            const newPosition = prompt('Vnesite ime nove pozicije:');
+            if (newPosition && newPosition.trim()) {
+                // Save position to database first
+                try {
+                    const response = await fetch('/admin/add-position', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ name: newPosition.trim() })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        // Add to both position dropdowns
+                        const primarySelect = document.getElementById('employeePosition');
+                        const secondarySelect = document.getElementById('employeeSecondaryPositions');
+                        
+                        const positionName = result.positionName || newPosition.trim();
+                        
+                        // Check if option already exists
+                        const existingOption1 = Array.from(primarySelect.options).find(opt => opt.value === positionName);
+                        if (!existingOption1) {
+                            const option1 = document.createElement('option');
+                            option1.value = positionName;
+                            option1.textContent = positionName;
+                            option1.selected = true;
+                            primarySelect.appendChild(option1);
+                        } else {
+                            existingOption1.selected = true;
+                        }
+                        
+                        const existingOption2 = Array.from(secondarySelect.options).find(opt => opt.value === positionName);
+                        if (!existingOption2) {
+                            const option2 = document.createElement('option');
+                            option2.value = positionName;
+                            option2.textContent = positionName;
+                            secondarySelect.appendChild(option2);
+                        }
+                    } else {
+                        alert('Napaka pri dodajanju pozicije: ' + (result.error || 'Neznana napaka'));
+                    }
+                } catch (error) {
+                    console.error('Error adding position:', error);
+                    alert('Napaka pri dodajanju pozicije. Poskusite znova.');
+                }
+            }
+        }
+        
+        document.getElementById('employeeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const userId = document.getElementById('employeeUserId').value;
+            const isEdit = userId !== '';
+            
+            // Get selected secondary positions
+            const secondarySelect = document.getElementById('employeeSecondaryPositions');
+            const selectedSecondary = Array.from(secondarySelect.selectedOptions).map(option => option.value);
+            const secondaryPositionsString = selectedSecondary.length > 0 ? selectedSecondary.join(', ') : null;
+            
+            const data = {
+                firstName: document.getElementById('employeeFirstName').value,
+                lastName: document.getElementById('employeeLastName').value,
+                position: document.getElementById('employeePosition').value || null,
+                employmentType: document.getElementById('employeeEmploymentType').value || null,
+                secondaryPositions: secondaryPositionsString
+            };
+            
+            if (isEdit) {
+                data.userId = userId;
+                data.email = document.getElementById('employeeEmail').value;
+                
+                fetch('@Url.Action("UpdateEmployee", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            } else {
+                const password = document.getElementById('employeePassword').value;
+                if (!password) {
+                    alert('Geslo je obvezno pri dodajanju novega zaposlenega.');
+                    return;
+                }
+                data.email = document.getElementById('employeeEmail').value;
+                data.password = password;
+                fetch('@Url.Action("AddEmployee", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            }
+        });
+        
+        function generatePassword(userId, email) {
+            fetch('@Url.Action("GeneratePassword", "Admin")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: userId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.password) {
+                    document.getElementById('passwordEmail').textContent = email;
+                    document.getElementById('passwordValue').textContent = data.password;
+                    document.getElementById('sendEmailLink').href = 'mailto:' + email + '?subject=Vaše geslo za AvailabilityCollector&body=Vaše geslo je: ' + data.password;
+                    new bootstrap.Modal(document.getElementById('passwordModal')).show();
+                } else {
+                    alert('Napaka: ' + (data.error || 'Neznana napaka'));
+                }
+            })
+            .catch(error => alert('Napaka pri ustvarjanju gesla: ' + error));
+        }
+        
+        function assignAdminRole(userId) {
+            if (confirm('Ali ste prepričani, da želite dodeliti Admin vlogo temu uporabniku?')) {
+                fetch('@Url.Action("AssignAdminRole", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            }
+        }
+        
+        function removeAdminRole(userId) {
+            if (confirm('Ali ste prepričani, da želite odstraniti Admin vlogo temu uporabniku?')) {
+                fetch('@Url.Action("RemoveAdminRole", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            }
+        }
+        
+        function setInactive(userId) {
+            if (confirm('Ali ste prepričani, da želite nastaviti tega zaposlenega kot neaktiven?')) {
+                fetch('@Url.Action("SetEmployeeInactive", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            }
+        }
+        
+        function setActive(userId) {
+            fetch('@Url.Action("SetEmployeeActive", "Admin")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: userId })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert('Napaka: ' + result.error);
+                }
+            })
+            .catch(error => alert('Napaka: ' + error));
+        }
+        
+        function deleteEmployee(userId) {
+            if (confirm('Ali ste prepričani, da želite izbrisati tega zaposlenega? To dejanje je nepovratno!')) {
+                fetch('@Url.Action("DeleteEmployee", "Admin")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert('Napaka: ' + result.error);
+                    }
+                })
+                .catch(error => alert('Napaka: ' + error));
+            }
+        }
+    </script>
+}

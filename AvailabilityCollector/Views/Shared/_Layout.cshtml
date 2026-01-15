@@ -6,6 +6,7 @@
     <title>@ViewData["Title"] - AvailabilityCollector</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/AvailabilityCollector.styles.css" asp-append-version="true" />
 </head>
@@ -19,21 +20,40 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-                        </li>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <ul class="navbar-nav flex-grow-1">
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                            </li>
+                                   <li class="nav-item">
+                                       <a class="nav-link text-dark" asp-controller="Admin" asp-action="Availability" asp-route-monthKey="">Aktualno</a>
+                                   </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Razpolozljivosti">Razpoložljivosti</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Zaposleni">Zaposleni</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Nastavitve">Nastavitve</a>
+                            </li>
+                        </ul>
+                    }
+                    <ul class="navbar-nav ms-auto">
+                        <partial name="_LoginPartial" />
                     </ul>
-                    <partial name="_LoginPartial" />
-
                 </div>
             </div>
         </nav>
     </header>
-    <div class="container">
+    @{
+        // Use custom container for Availability page, container for others
+        var isAvailabilityPage = ViewContext.RouteData.Values["controller"]?.ToString() == "Admin" 
+            && ViewContext.RouteData.Values["action"]?.ToString() == "Availability";
+        var containerClass = isAvailabilityPage ? "container-availability" : "container";
+    }
+    <div class="@containerClass">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
@@ -41,7 +61,7 @@
 
     <footer class="border-top footer text-muted">
         <div class="container">
-            &copy; 2025 - AvailabilityCollector - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            &copy; 2025 - AvailabilityCollector
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

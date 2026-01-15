@@ -1,4 +1,6 @@
 using AvailabilityCollector.Data;
+using AvailabilityCollector.Models;
+using AvailabilityCollector.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -16,7 +18,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 // Identity
-builder.Services.AddDefaultIdentity<IdentityUser>(options =>
+builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 {
     options.SignIn.RequireConfirmedAccount = false;
 })
@@ -26,6 +28,13 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 // Controllers and Views
 builder.Services.AddControllers();
 builder.Services.AddControllersWithViews();
+
+// Configure route options for lowercase URLs
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.LowercaseUrls = true;
+    options.LowercaseQueryStrings = true;
+});
 
 // Add CORS for Android app
 builder.Services.AddCors(options =>
@@ -45,13 +54,14 @@ var issuer = jwtSection["Issuer"];
 var audience = jwtSection["Audience"];
 var key = jwtSection["Key"] ?? throw new Exception("Jwt:Key missing");
 
+// Authentication: Cookies (default for web UI) + JWT (for API)
 builder.Services
     .AddAuthentication(options =>
     {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        // Default scheme is cookies (Identity) for web UI
+        // JWT Bearer is added as an additional scheme for API
     })
-    .AddJwtBearer(options =>
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -68,27 +78,49 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// Background service for auto-locking months
+builder.Services.AddHostedService<AutoLockService>();
+
+// Background service for notification reminders
+builder.Services.AddHostedService<NotificationReminderService>();
+
+// Notification service
+builder.Services.AddScoped<NotificationService>();
+
 // Swagger + JWT support
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AvailabilityCollector API", Version = "v1" });
 
-    var securityScheme = new OpenApiSecurityScheme
+    // Only include API routes (routes starting with /api)
+    c.DocInclusionPredicate((docName, apiDesc) =>
     {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter: Bearer {your JWT token}"
-    };
+        return apiDesc.RelativePath?.StartsWith("api/", StringComparison.OrdinalIgnoreCase) == true;
+    });
 
-    c.AddSecurityDefinition("Bearer", securityScheme);
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { securityScheme, new string[] { } }
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
     });
 });
 
@@ -98,14 +130,20 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    app.UseSwagger();
-    app.UseSwaggerUI();
 }
 else
 {
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
+
+// Enable Swagger UI in all environments (required for assignment documentation)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "AvailabilityCollector API v1");
+    c.RoutePrefix = "swagger"; // Swagger UI will be available at /swagger
+});
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
@@ -120,8 +158,12 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapControllerRoute(
+    name: "dashboard",
+    pattern: "dashboard",
+    defaults: new { controller = "Dashboard", action = "Index" });
+app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
+    pattern: "{controller=home}/{action=index}/{id?}")
     .WithStaticAssets();
 app.MapRazorPages();
 
