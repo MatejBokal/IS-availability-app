@@ -1,11 +1,20 @@
 @using AvailabilityCollector.Models
 @{
     ViewData["Title"] = "Zgodovina - " + ViewBag.MonthKey;
+    var month = ViewBag.Month as AvailabilityMonth;
     var daysInMonth = (int)ViewBag.DaysInMonth;
     var firstDay = (DateOnly)ViewBag.FirstDay;
     var holidays = ViewBag.Holidays as List<Holiday> ?? new List<Holiday>();
     var submission = ViewBag.Submission as AvailabilitySubmission;
+    var minDurationMinutes = (int)ViewBag.MinDurationMinutes;
+    var allowedStartTime = ViewBag.AllowedStartTime as string ?? "07:00";
+    var allowedEndTime = ViewBag.AllowedEndTime as string ?? "23:00";
     var monthKey = ViewBag.MonthKey as string;
+    var isEditingDisabled = ViewBag.IsEditingDisabled as bool? ?? false;
+    var lockAfterSubmission = ViewBag.LockAfterSubmission as bool? ?? false;
+    var hasExistingSubmission = ViewBag.HasExistingSubmission as bool? ?? false;
+    
+    var isLocked = !month.IsUnlocked || (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow);
     
     // Parse month parts
     var monthParts = monthKey.Split('-');
@@ -15,11 +24,14 @@
     // Create set of holiday dates
     var holidayDates = holidays.Select(h => h.Date).ToHashSet();
     
-    // Load existing entries
+    // Load existing entries if submission exists
     var existingEntries = new Dictionary<DateOnly, AvailabilityEntry>();
-    foreach (var entry in submission.Entries)
+    if (submission != null)
     {
-        existingEntries[entry.Date] = entry;
+        foreach (var entry in submission.Entries)
+        {
+            existingEntries[entry.Date] = entry;
+        }
     }
 }
 
@@ -33,16 +45,33 @@
         </div>
     </div>
 
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> Samo pregled oddane razpoložljivosti. Urejanje ni mogoče.
-        <br />Oddano: @submission.SubmittedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
-    </div>
+    @if (isLocked)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-lock"></i> Ta mesec je zaklenjen in ga ni mogoče urejati. Samo pregled je na voljo.
+            <br />Oddano: @submission.SubmittedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+        </div>
+    }
+    else if (isEditingDisabled && hasExistingSubmission)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Urejanje oddane razpoložljivosti ni dovoljeno po nastavitvah administratorja. Samo pregled je na voljo.
+            <br />Oddano: @submission.SubmittedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+        </div>
+    }
+    else if (!isEditingDisabled)
+    {
+        <div class="alert alert-success">
+            <i class="bi bi-pencil"></i> Urejanje je omogočeno. Lahko spremenite svojo razpoložljivost.
+            <br />Oddano: @submission.SubmittedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+        </div>
+    }
 
     <!-- Calendar Grid -->
     <div class="card mb-3">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered table-sm">
+                <table class="table table-bordered table-sm" id="calendarGrid">
                     <thead class="table-light">
                         <tr>
                             <th style="width: 14.28%;">Pon</th>
@@ -54,7 +83,7 @@
                             <th style="width: 14.28%;">Ned</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="calendarBody">
                         @{
                             // Calculate how many days to pad before the first day of the month
                             var firstDayOfWeek = (int)firstDay.DayOfWeek;
@@ -78,7 +107,7 @@
                                 var isCurrentMonth = currentDate >= firstDay && currentDate <= firstDay.AddMonths(1).AddDays(-1);
                                 var entry = existingEntries.ContainsKey(currentDate) ? existingEntries[currentDate] : null;
                                 
-                                string cellClass = "text-center";
+                                string cellClass = "calendar-day text-center";
                                 if (!isCurrentMonth)
                                 {
                                     cellClass += " text-muted bg-light";
@@ -88,49 +117,46 @@
                                     cellClass += " bg-secondary bg-opacity-10";
                                 }
                                 
-                                string cellContent = "";
-                                string tooltip = "";
-                                
                                 if (entry != null)
                                 {
                                     switch (entry.Type)
                                     {
                                         case AvailabilityType.FullDay:
                                             cellClass += " bg-success bg-opacity-50";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
-                                            tooltip = "Na voljo cel dan";
                                             break;
                                         case AvailabilityType.TimeRange:
                                             cellClass += " bg-warning bg-opacity-50";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
-                                            var timeRange = (entry.StartTime?.ToString("HH:mm") ?? "") + "-" + (entry.EndTime?.ToString("HH:mm") ?? "");
-                                            cellContent += "<div style='font-size: 0.7em; margin-top: 2px;' class='time-display'>" + timeRange + "</div>";
-                                            tooltip = $"Delno: {timeRange}";
                                             break;
                                         case AvailabilityType.Unavailable:
                                             cellClass += " bg-danger bg-opacity-50";
-                                            cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
-                                            tooltip = "Ni na voljo";
                                             break;
                                     }
                                 }
-                                else if (isCurrentMonth)
-                                {
-                                    cellContent = "<div style='font-weight: bold;'>" + dayNum + "</div>";
-                                    tooltip = "Ni oddane razpoložljivosti";
-                                }
-                                
-                                if (isHoliday && isCurrentMonth)
-                                {
-                                    var holiday = holidays.FirstOrDefault(h => h.Date == currentDate);
-                                    cellContent += "<div style='font-size: 0.65em; margin-top: 2px;' class='text-muted'>" + (holiday?.Name ?? "") + "</div>";
-                                }
                                 
                                 <td class="@cellClass" 
-                                    title="@tooltip"
-                                    style="min-height: 60px; position: relative;"
-                                    @(entry?.Type == AvailabilityType.TimeRange && isCurrentMonth ? $"onclick=\"showTimeRange('{entry.StartTime?.ToString("HH:mm")}', '{entry.EndTime?.ToString("HH:mm")}')\"" : "")>
-                                    @Html.Raw(cellContent)
+                                    data-date="@currentDate.ToString("yyyy-MM-dd")"
+                                    data-day="@dayNum"
+                                    data-month="@(isCurrentMonth ? "current" : "other")"
+                                    onclick="@(isCurrentMonth && entry?.Type == AvailabilityType.TimeRange && isEditingDisabled ? "showTimeRange('" + (entry.StartTime?.ToString("HH:mm") ?? "") + "', '" + (entry.EndTime?.ToString("HH:mm") ?? "") + "')" : (!isEditingDisabled && isCurrentMonth ? "toggleDateSelection('" + currentDate.ToString("yyyy-MM-dd") + "')" : ""))"
+                                    style="cursor: @(isCurrentMonth && entry?.Type == AvailabilityType.TimeRange && isEditingDisabled ? "pointer" : (isEditingDisabled || !isCurrentMonth ? "default" : "pointer")); min-height: 60px; position: relative;">
+                                    @if (isCurrentMonth)
+                                    {
+                                        <div style="font-weight: bold;">@dayNum</div>
+                                        @if (entry != null)
+                                        {
+                                            if (entry.Type == AvailabilityType.TimeRange)
+                                            {
+                                                <div style="font-size: 0.7em; margin-top: 2px;" class="time-display" data-time="@(entry.StartTime?.ToString("HH:mm") + "-" + entry.EndTime?.ToString("HH:mm"))">
+                                                    @(entry.StartTime?.ToString("HH:mm") ?? "")-@(entry.EndTime?.ToString("HH:mm") ?? "")
+                                                </div>
+                                            }
+                                        }
+                                        @if (isHoliday)
+                                        {
+                                            var holiday = holidays.FirstOrDefault(h => h.Date == currentDate);
+                                            <div style="font-size: 0.65em; margin-top: 2px;" class="text-muted">@(holiday?.Name ?? "")</div>
+                                        }
+                                    }
                                 </td>
                                 
                                 // Start new row on Sunday (end of week)
@@ -158,46 +184,454 @@
         </div>
     </div>
 
+    <!-- Selection Controls (only shown when editing is enabled) -->
+    @if (!isEditingDisabled)
+    {
+        <div id="selectionControls" class="card mb-3" style="display: none;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <strong>Izbrano: <span id="selectedCount">0</span> dni</strong>
+                        <div id="selectedDatesList" class="small text-muted mt-1"></div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                        <i class="bi bi-x-circle"></i> Počisti izbor
+                    </button>
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-success w-100" onclick="setAvailability('FullDay')">
+                            <i class="bi bi-check-circle"></i> Na voljo
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-warning w-100" onclick="setAvailability('TimeRange')">
+                            <i class="bi bi-clock"></i> Delno
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-danger w-100" onclick="setAvailability('Unavailable')">
+                            <i class="bi bi-x-circle"></i> Ni na voljo
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Time Range Input (shown when "Delno" is selected) -->
+                <div id="timeRangeInput" style="display: none;">
+                    <label class="form-label">Čas:</label>
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <input type="time" id="timeStart" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="8:00">
+                        </div>
+                        <div class="col-md-2 text-center align-self-center">-</div>
+                        <div class="col-md-5">
+                            <input type="time" id="timeEnd" class="form-control" min="@allowedStartTime" max="@allowedEndTime" placeholder="15:00">
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Dovoljeni časovni razpon: @allowedStartTime - @allowedEndTime<br />
+                        Minimalna dolžina: @(minDurationMinutes / 60) ur
+                    </small>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-warning" onclick="applyTimeRange()">
+                            <i class="bi bi-check"></i> Potrdi čas
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
     <!-- Legend -->
     <div class="card mb-3">
         <div class="card-body">
             <strong>Legenda:</strong>
             <div class="d-flex flex-wrap gap-3 mt-2">
                 <div><span class="badge bg-success text-white me-1">✓</span> Na voljo</div>
-                <div><span class="badge bg-warning me-1">◐</span> Delno (kliknite za čas)</div>
+                <div><span class="badge bg-warning me-1"><i class="bi bi-clock"></i></span> Delno</div>
                 <div><span class="badge bg-danger text-white me-1">✗</span> Ni na voljo</div>
                 <div><span class="text-muted">Sivo</span> Vikend/Praznik</div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Time Range Modal -->
-<div class="modal fade" id="timeRangeModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Časovni razpon</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Submit Button (only shown when editing is enabled) -->
+    @if (!isEditingDisabled)
+    {
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="btn btn-primary btn-lg" onclick="submitAvailability()" id="submitBtn">
+                <i class="bi bi-save"></i> Shrani razpoložljivost
+            </button>
+        </div>
+    }
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="bi me-2" id="toastIcon"></i>
+                <strong class="me-auto" id="toastTitle">Obvestilo</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <p><strong>Od:</strong> <span id="modalStartTime"></span></p>
-                <p><strong>Do:</strong> <span id="modalEndTime"></span></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zapri</button>
-            </div>
+            <div class="toast-body" id="toastMessage"></div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        function showTimeRange(startTime, endTime) {
-            document.getElementById('modalStartTime').textContent = startTime || '';
-            document.getElementById('modalEndTime').textContent = endTime || '';
-            const modal = new bootstrap.Modal(document.getElementById('timeRangeModal'));
-            modal.show();
-        }
-    </script>
+    @if (!isEditingDisabled)
+    {
+        <script>
+            const monthKey = '@monthKey';
+            const minDurationMinutes = @minDurationMinutes;
+            const allowedStartTime = '@allowedStartTime';
+            const allowedEndTime = '@allowedEndTime';
+            const submissionId = @(submission?.Id ?? 0);
+            const isLocked = @(isLocked ? "true" : "false");
+            const isEditingDisabled = @(isEditingDisabled ? "true" : "false");
+            
+            let selectedDates = new Set();
+            let availability = {};
+            let pendingTimeRange = null;
+            
+            // Load existing availability
+            @if (submission != null && submission.Entries.Any())
+            {
+                foreach (var entry in submission.Entries)
+                {
+                    <text>
+                    availability['@entry.Date.ToString("yyyy-MM-dd")'] = {
+                        type: '@entry.Type',
+                        startTime: '@(entry.StartTime?.ToString("HH:mm") ?? "")',
+                        endTime: '@(entry.EndTime?.ToString("HH:mm") ?? "")'
+                    };
+                    </text>
+                }
+            }
+
+            function toggleDateSelection(dateStr) {
+                if (isEditingDisabled) return;
+                
+                const cell = document.querySelector(`[data-date="${dateStr}"]`);
+                if (!cell || cell.getAttribute('data-month') !== 'current') return;
+                
+                if (selectedDates.has(dateStr)) {
+                    selectedDates.delete(dateStr);
+                    cell.classList.remove('border', 'border-primary', 'border-3');
+                } else {
+                    selectedDates.add(dateStr);
+                    cell.classList.add('border', 'border-primary', 'border-3');
+                }
+                
+                updateSelectionControls();
+            }
+
+            function updateSelectionControls() {
+                const count = selectedDates.size;
+                const controlsDiv = document.getElementById('selectionControls');
+                const countSpan = document.getElementById('selectedCount');
+                const datesList = document.getElementById('selectedDatesList');
+                
+                if (count > 0) {
+                    controlsDiv.style.display = 'block';
+                    countSpan.textContent = count;
+                    
+                    const sortedDates = Array.from(selectedDates).sort();
+                    if (count <= 5) {
+                        datesList.textContent = sortedDates.join(', ');
+                    } else {
+                        datesList.textContent = sortedDates.slice(0, 5).join(', ') + '...';
+                    }
+                    
+                    // Check if any selected date has TimeRange
+                    const hasTimeRange = Array.from(selectedDates).some(d => 
+                        availability[d] && availability[d].type === 'TimeRange'
+                    );
+                    if (hasTimeRange && pendingTimeRange === null) {
+                        // Show existing time if all selected have same time
+                        const times = Array.from(selectedDates)
+                            .map(d => availability[d])
+                            .filter(a => a && a.type === 'TimeRange')
+                            .map(a => a.startTime + '-' + a.endTime);
+                        const uniqueTimes = [...new Set(times)];
+                        if (uniqueTimes.length === 1) {
+                            const [start, end] = uniqueTimes[0].split('-');
+                            document.getElementById('timeStart').value = start;
+                            document.getElementById('timeEnd').value = end;
+                        }
+                    }
+                } else {
+                    controlsDiv.style.display = 'none';
+                    document.getElementById('timeRangeInput').style.display = 'none';
+                    pendingTimeRange = null;
+                }
+            }
+
+            function clearSelection() {
+                selectedDates.forEach(dateStr => {
+                    const cell = document.querySelector(`[data-date="${dateStr}"]`);
+                    if (cell) {
+                        cell.classList.remove('border', 'border-primary', 'border-3');
+                    }
+                });
+                selectedDates.clear();
+                updateSelectionControls();
+            }
+
+            function setAvailability(type) {
+                if (selectedDates.size === 0) return;
+                
+                if (type === 'TimeRange') {
+                    document.getElementById('timeRangeInput').style.display = 'block';
+                    pendingTimeRange = 'TimeRange';
+                } else {
+                    applyAvailability(type, null, null);
+                }
+            }
+
+            function applyTimeRange() {
+                const startTime = document.getElementById('timeStart').value;
+                const endTime = document.getElementById('timeEnd').value;
+                
+                if (!startTime || !endTime) {
+                    showToast('Prosimo, vnesite oba časovna podatka.', 'error');
+                    return;
+                }
+                
+                // Validate time format
+                const start = new Date(`2000-01-01T${startTime}`);
+                const end = new Date(`2000-01-01T${endTime}`);
+                
+                if (end <= start) {
+                    showToast('Končni čas mora biti za začetnim časom.', 'error');
+                    return;
+                }
+                
+                // Validate allowed time window
+                const allowedStart = new Date(`2000-01-01T${allowedStartTime}`);
+                const allowedEnd = new Date(`2000-01-01T${allowedEndTime}`);
+                
+                if (start < allowedStart) {
+                    showToast(`Začetni čas mora biti najmanj ${allowedStartTime}.`, 'error');
+                    return;
+                }
+                
+                if (end > allowedEnd) {
+                    showToast(`Končni čas mora biti največ ${allowedEndTime}.`, 'error');
+                    return;
+                }
+                
+                // Validate minimum duration
+                const durationMinutes = (end - start) / (1000 * 60);
+                
+                if (durationMinutes < minDurationMinutes) {
+                    showToast(`Časovni razpon mora biti vsaj ${minDurationMinutes / 60} ur.`, 'error');
+                    return;
+                }
+                
+                applyAvailability('TimeRange', startTime, endTime);
+            }
+
+            function applyAvailability(type, startTime, endTime) {
+                selectedDates.forEach(dateStr => {
+                    availability[dateStr] = {
+                        type: type,
+                        startTime: startTime || '',
+                        endTime: endTime || ''
+                    };
+                    
+                    updateCell(dateStr);
+                });
+                
+                document.getElementById('timeRangeInput').style.display = 'none';
+                document.getElementById('timeStart').value = '';
+                document.getElementById('timeEnd').value = '';
+                pendingTimeRange = null;
+                clearSelection();
+            }
+
+            function updateCell(dateStr) {
+                const cell = document.querySelector(`[data-date="${dateStr}"]`);
+                if (!cell) return;
+                
+                // Remove existing status classes
+                cell.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-opacity-50', 'text-white');
+                
+                const entry = availability[dateStr];
+                if (!entry) {
+                    cell.innerHTML = `<div style="font-weight: bold;">${cell.getAttribute('data-day')}</div>`;
+                    return;
+                }
+                
+                let content = `<div style="font-weight: bold;">${cell.getAttribute('data-day')}</div>`;
+                
+                if (entry.type === 'FullDay') {
+                    cell.classList.add('bg-success', 'bg-opacity-50');
+                } else if (entry.type === 'Unavailable') {
+                    cell.classList.add('bg-danger', 'bg-opacity-50');
+                } else if (entry.type === 'TimeRange') {
+                    cell.classList.add('bg-warning', 'bg-opacity-50');
+                    content += `<div style="font-size: 0.7em; margin-top: 2px;" class="time-display">${entry.startTime}-${entry.endTime}</div>`;
+                }
+                
+                cell.innerHTML = content;
+            }
+
+            async function submitAvailability() {
+                if (isEditingDisabled) {
+                    showToast('Urejanje ni dovoljeno. Ta mesec je zaklenjen ali pa je urejanje po oddaji onemogočeno.', 'error');
+                    return;
+                }
+                
+                // Convert availability to API format
+                const entries = [];
+                for (const [dateStr, entry] of Object.entries(availability)) {
+                    entries.push({
+                        date: dateStr,
+                        type: entry.type,
+                        startTime: entry.startTime || null,
+                        endTime: entry.endTime || null
+                    });
+                }
+                
+                const url = submissionId > 0 
+                    ? `/api/availability/my/submissions/${submissionId}`
+                    : '/api/availability/my/submissions';
+                
+                const method = submissionId > 0 ? 'PUT' : 'POST';
+                
+                try {
+                    let response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include', // Include cookies for authentication
+                        body: JSON.stringify({
+                            monthKey: monthKey,
+                            entries: entries
+                        })
+                    });
+                    
+                    // Handle non-JSON responses
+                    let result;
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        result = await response.json();
+                    } else {
+                        const text = await response.text();
+                        result = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+                    }
+                    
+                    // If Conflict (409) and we used POST, try PUT instead (submission exists)
+                    if (response.status === 409 && method === 'POST' && submissionId === 0) {
+                        // Fetch the existing submission to get its ID
+                        try {
+                            const getResponse = await fetch(`/api/availability/my?monthKey=${encodeURIComponent(monthKey)}`, {
+                                credentials: 'include'
+                            });
+                            if (getResponse.ok) {
+                                const submissionData = await getResponse.json();
+                                if (submissionData.submissionId) {
+                                    // Retry with PUT using the fetched submission ID
+                                    const putUrl = `/api/availability/my/submissions/${submissionData.submissionId}`;
+                                    const putResponse = await fetch(putUrl, {
+                                        method: 'PUT',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        credentials: 'include',
+                                        body: JSON.stringify({
+                                            monthKey: monthKey,
+                                            entries: entries
+                                        })
+                                    });
+                                    
+                                    const putResult = await putResponse.json();
+                                    if (putResponse.ok) {
+                                        showToast('Razpoložljivost je bila uspešno shranjena.', 'success');
+                                    } else {
+                                        showToast('Napaka: ' + (putResult.error || 'Neznana napaka'), 'error');
+                                        console.error('Update error:', putResult);
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (fetchError) {
+                            console.error('Error fetching submission:', fetchError);
+                        }
+                        // Fallback: show error
+                        showToast('Napaka pri posodabljanju oddaje.', 'error');
+                        return;
+                    }
+                    
+                    if (response.ok) {
+                        showToast('Razpoložljivost je bila uspešno shranjena.', 'success');
+                    } else {
+                        showToast('Napaka: ' + (result.error || 'Neznana napaka'), 'error');
+                        console.error('Submission error:', result);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    const errorMessage = error.message || 'Neznana napaka';
+                    showToast('Napaka pri shranjevanju razpoložljivosti: ' + errorMessage, 'error');
+                }
+            }
+
+            function showToast(message, type = 'success') {
+                const toast = document.getElementById('toast');
+                const toastMessage = document.getElementById('toastMessage');
+                const toastIcon = document.getElementById('toastIcon');
+                const toastTitle = document.getElementById('toastTitle');
+                
+                toastMessage.textContent = message;
+                
+                if (type === 'success') {
+                    toastIcon.className = 'bi bi-check-circle-fill text-success me-2';
+                    toastTitle.textContent = 'Uspešno';
+                } else {
+                    toastIcon.className = 'bi bi-exclamation-triangle-fill text-danger me-2';
+                    toastTitle.textContent = 'Napaka';
+                }
+                
+                const bsToast = new bootstrap.Toast(toast, {
+                    autohide: true,
+                    delay: 3000
+                });
+                bsToast.show();
+            }
+        </script>
+    }
+    else
+    {
+        <!-- Read-only mode: Show time range modal for viewing -->
+        <script>
+            function showTimeRange(startTime, endTime) {
+                document.getElementById('modalStartTime').textContent = startTime || '';
+                document.getElementById('modalEndTime').textContent = endTime || '';
+                const modal = new bootstrap.Modal(document.getElementById('timeRangeModal'));
+                modal.show();
+            }
+        </script>
+        
+        <!-- Time Range Modal (for read-only viewing) -->
+        <div class="modal fade" id="timeRangeModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Časovni razpon</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>Od:</strong> <span id="modalStartTime"></span></p>
+                        <p><strong>Do:</strong> <span id="modalEndTime"></span></p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zapri</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 }

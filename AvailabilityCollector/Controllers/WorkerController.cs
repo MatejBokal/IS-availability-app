@@ -161,17 +161,17 @@ public class WorkerController : Controller
         // Determine if editing is disabled
         // Editing is disabled if:
         // 1. Month is locked, OR
-        // 2. LockAfterSubmission is enabled AND submission exists
+        // 2. LockAfterSubmission is enabled AND submission exists (any submission that exists has been submitted)
         var isEditingDisabled = !month.IsUnlocked || 
                                (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow) ||
-                               (lockAfterSubmission && submission != null && submission.SubmittedAtUtc != default);
+                               (lockAfterSubmission && submission != null);
 
         ViewBag.MinDurationMinutes = minDurationMinutes;
         ViewBag.AllowedStartTime = allowedStartTime;
         ViewBag.AllowedEndTime = allowedEndTime;
         ViewBag.IsEditingDisabled = isEditingDisabled;
         ViewBag.LockAfterSubmission = lockAfterSubmission;
-        ViewBag.HasExistingSubmission = submission != null && submission.SubmittedAtUtc != default;
+        ViewBag.HasExistingSubmission = submission != null;
 
         return View();
     }
@@ -243,6 +243,43 @@ public class WorkerController : Controller
         {
             minDurationMinutes = (int)(hours * 60);
         }
+
+        // Get allowed time window settings (default to 07:00 - 23:00)
+        var allowedStartTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedStartTime");
+        
+        var allowedStartTime = "07:00"; // Default
+        if (allowedStartTimeSetting != null && !string.IsNullOrEmpty(allowedStartTimeSetting.Value))
+        {
+            allowedStartTime = allowedStartTimeSetting.Value;
+        }
+
+        var allowedEndTimeSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "AllowedEndTime");
+        
+        var allowedEndTime = "23:00"; // Default
+        if (allowedEndTimeSetting != null && !string.IsNullOrEmpty(allowedEndTimeSetting.Value))
+        {
+            allowedEndTime = allowedEndTimeSetting.Value;
+        }
+
+        // Check if lock after initial submission is enabled
+        var lockAfterSubmissionSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+        
+        var lockAfterSubmission = false;
+        if (lockAfterSubmissionSetting != null && bool.TryParse(lockAfterSubmissionSetting.Value, out var lockSetting))
+        {
+            lockAfterSubmission = lockSetting;
+        }
+
+        // Determine if editing is disabled
+        // Editing is disabled if:
+        // 1. Month is locked, OR
+        // 2. LockAfterSubmission is enabled AND submission exists (any submission that exists has been submitted)
+        var isEditingDisabled = !month.IsUnlocked || 
+                               (month.LockDateTimeUtc.HasValue && month.LockDateTimeUtc.Value <= DateTime.UtcNow) ||
+                               (lockAfterSubmission && submission != null);
         
         ViewBag.MonthKey = monthKey;
         ViewBag.Month = month;
@@ -251,6 +288,11 @@ public class WorkerController : Controller
         ViewBag.Holidays = holidays;
         ViewBag.Submission = submission;
         ViewBag.MinDurationMinutes = minDurationMinutes;
+        ViewBag.AllowedStartTime = allowedStartTime;
+        ViewBag.AllowedEndTime = allowedEndTime;
+        ViewBag.IsEditingDisabled = isEditingDisabled;
+        ViewBag.LockAfterSubmission = lockAfterSubmission;
+        ViewBag.HasExistingSubmission = submission != null;
 
         return View();
     }

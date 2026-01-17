@@ -133,11 +133,11 @@ fun AppNavigation(navController: NavHostController) {
                 java.net.URLDecoder.decode(it, "UTF-8")
             } ?: ""
             
-            // Show AvailabilityScreen in read-only mode for history
+            // Show AvailabilityScreen - editing is determined by settings (month lock status and lockAfterSubmission)
             AvailabilityScreen(
                 monthKey = monthKey,
                 onBackClick = { navController.popBackStack() },
-                readOnly = true
+                readOnly = false  // Let AvailabilityScreen determine if editing is allowed based on settings
             )
         }
         composable(Screen.Profile.route) { backStackEntry ->

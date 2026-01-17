@@ -116,7 +116,10 @@ fun HistoryScreen(
                     items(submissions) { submission ->
                         HistoryItem(
                             submission = submission,
-                            onClick = { onMonthSelected(submission.monthKey) }
+                            onClick = { 
+                                // Allow editing - let AvailabilityScreen determine if editing is allowed
+                                onMonthSelected(submission.monthKey) 
+                            }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }

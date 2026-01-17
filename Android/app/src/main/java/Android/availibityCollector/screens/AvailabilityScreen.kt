@@ -36,7 +36,7 @@ import java.util.*
 fun AvailabilityScreen(
     monthKey: String,  // Format: MM-yyyy
     onBackClick: () -> Unit,
-    readOnly: Boolean = false  // For history view
+    readOnly: Boolean = false  // Deprecated: kept for backward compatibility, but editing is now determined by settings
 ) {
     val context = LocalContext.current
     val volleyClient = remember { VolleyClient.getInstance(context) }
@@ -59,7 +59,10 @@ fun AvailabilityScreen(
     var isSaving by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var isLocked by remember { mutableStateOf(false) }
+    var lockAfterSubmission by remember { mutableStateOf(false) }
+    var isEditingDisabled by remember { mutableStateOf(false) }
     var submissionId by remember { mutableStateOf<Int?>(null) }
+    var hasExistingSubmission by remember { mutableStateOf(false) }
     var minDurationMinutes by remember { mutableStateOf(240) } // Default 4 hours, will be fetched from backend
     
     // Track availability: LocalDate -> AvailabilityEntryDto
@@ -81,6 +84,16 @@ fun AvailabilityScreen(
                 Toast.makeText(context, "Napaka pri nalaganju nastavitev: $error", Toast.LENGTH_SHORT).show()
             }
         )
+        
+        volleyClient.getLockAfterInitialSubmission(
+            onSuccess = { enabled ->
+                lockAfterSubmission = enabled
+            },
+            onError = { _ ->
+                // Default to false if fetch fails
+                lockAfterSubmission = false
+            }
+        )
     }
     
     // Load month info and existing submission
@@ -90,16 +103,28 @@ fun AvailabilityScreen(
             volleyClient.getMyAvailability(
                 monthKey = monthKey,
                 onSuccess = { submission ->
-                    submissionId = null // We'll need to track this differently
+                    submissionId = submission.submissionId
+                    hasExistingSubmission = submission.submissionId != null
                     submission.entries.forEach { entry ->
                         val date = LocalDate.parse(entry.date)
                         availability[date] = entry
                     }
+                    
+                    // Determine if editing is disabled
+                    // Editing is disabled if:
+                    // 1. Month is locked, OR
+                    // 2. LockAfterSubmission is enabled AND submission exists
+                    isEditingDisabled = isLocked || (lockAfterSubmission && hasExistingSubmission)
+                    
                     isLoading = false
                 },
                 onError = { error ->
                     // 404 means no submission yet, which is fine
                     if (error.contains("404") || error.contains("No submission")) {
+                        hasExistingSubmission = false
+                        submissionId = null
+                        // Determine if editing is disabled (only month lock matters if no submission)
+                        isEditingDisabled = isLocked
                         isLoading = false
                     } else {
                         Toast.makeText(context, "Napaka: $error", Toast.LENGTH_LONG).show()
@@ -109,36 +134,30 @@ fun AvailabilityScreen(
             )
         }
         
-        // First check if month is locked (unless read-only mode)
-        if (!readOnly) {
-            volleyClient.getMonthInfo(
-                monthKey = monthKey,
-                onSuccess = { month ->
-                    // Check if month is locked
-                    val now = java.time.Instant.now()
-                    val locked = !month.isUnlocked || 
-                        (month.lockDateTimeUtc != null && try {
-                            val lockDate = java.time.Instant.parse(month.lockDateTimeUtc)
-                            now.isAfter(lockDate)
-                        } catch (e: Exception) {
-                            false
-                        })
-                    isLocked = locked
-                    
-                    // Then load submission
-                    loadSubmission()
-                },
-                onError = { _ ->
-                    // If month not found in unlocked list, assume locked
-                    isLocked = true
-                    loadSubmission()
-                }
-            )
-        } else {
-            // Read-only mode - just load submission
-            isLocked = true // Always locked in read-only mode
-            loadSubmission()
-        }
+        // Check if month is locked
+        volleyClient.getMonthInfo(
+            monthKey = monthKey,
+            onSuccess = { month ->
+                // Check if month is locked
+                val now = java.time.Instant.now()
+                val locked = !month.isUnlocked || 
+                    (month.lockDateTimeUtc != null && try {
+                        val lockDate = java.time.Instant.parse(month.lockDateTimeUtc)
+                        now.isAfter(lockDate)
+                    } catch (e: Exception) {
+                        false
+                    })
+                isLocked = locked
+                
+                // Then load submission
+                loadSubmission()
+            },
+            onError = { _ ->
+                // If month not found in available list, assume locked
+                isLocked = true
+                loadSubmission()
+            }
+        )
     }
     
     // Helper to apply availability type to selected dates
@@ -194,28 +213,45 @@ fun AvailabilityScreen(
                     .padding(paddingValues)
                     .padding(16.dp)
             ) {
-                if (isLocked || readOnly) {
+                if (isEditingDisabled) {
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (readOnly) 
-                                    MaterialTheme.colorScheme.primaryContainer 
-                                else 
+                                containerColor = if (isLocked)
                                     MaterialTheme.colorScheme.errorContainer
+                                else
+                                    MaterialTheme.colorScheme.primaryContainer
                             )
                         ) {
                             Text(
-                                text = if (readOnly) 
-                                    "Samo pregled oddane razpoložljivosti. Urejanje ni mogoče."
-                                else 
-                                    "Ta mesec je zaklenjen in ga ni mogoče urejati. Samo pregled je na voljo.",
+                                text = if (isLocked)
+                                    "Ta mesec je zaklenjen in ga ni mogoče urejati. Samo pregled je na voljo."
+                                else
+                                    "Urejanje oddane razpoložljivosti ni dovoljeno po nastavitvah administratorja. Samo pregled je na voljo.",
                                 modifier = Modifier.padding(16.dp),
                                 fontSize = 14.sp,
-                                color = if (readOnly)
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                else
+                                color = if (isLocked)
                                     MaterialTheme.colorScheme.onErrorContainer
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                } else if (hasExistingSubmission) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Text(
+                                text = "Urejanje je omogočeno. Lahko spremenite svojo razpoložljivost.",
+                                modifier = Modifier.padding(16.dp),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                         Spacer(modifier = Modifier.height(16.dp))
@@ -229,7 +265,7 @@ fun AvailabilityScreen(
                         selectedDates = selectedDates,
                         availability = availability,
                         onDateClick = { date ->
-                            if (!isLocked && !readOnly) {
+                            if (!isEditingDisabled) {
                                 selectedDates = if (selectedDates.contains(date)) {
                                     selectedDates - date
                                 } else {
@@ -243,7 +279,7 @@ fun AvailabilityScreen(
                 
                 // Selection controls
                 item {
-                    if (selectedDates.isNotEmpty() && !isLocked && !readOnly) {
+                    if (selectedDates.isNotEmpty() && !isEditingDisabled) {
                         SelectionControls(
                             selectedCount = selectedDates.size,
                             selectedDates = selectedDates,
@@ -332,7 +368,7 @@ fun AvailabilityScreen(
                 }
                 
                 // Submit button
-                if (!isLocked && !readOnly) {
+                if (!isEditingDisabled) {
                     item {
                         Button(
                             onClick = {
@@ -360,16 +396,49 @@ fun AvailabilityScreen(
                                         "Razpoložljivost je bila uspešno shranjena!",
                                         Toast.LENGTH_SHORT
                                     ).show()
-                                    onBackClick()
+                                    // Don't navigate back - stay on the same screen
                                 }
                                 
                                 val onError: (String) -> Unit = { error ->
                                     isSaving = false
-                                    Toast.makeText(
-                                        context,
-                                        "Napaka: $error",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                                    
+                                    // Handle 409 Conflict - submission exists, try PUT
+                                    if (error.contains("409") || error.contains("Conflict") || error.contains("Use PUT")) {
+                                        // Fetch the existing submission to get its ID
+                                        volleyClient.getMyAvailability(
+                                            monthKey = monthKey,
+                                            onSuccess = { submission ->
+                                                if (submission.submissionId != null) {
+                                                    // Retry with PUT using the fetched submission ID
+                                                    volleyClient.updateAvailabilitySubmission(
+                                                        submissionId = submission.submissionId!!,
+                                                        request = request,
+                                                        onSuccess = onSuccess,
+                                                        onError = onError
+                                                    )
+                                                } else {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Napaka: Ne morem najti ID oddaje",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            },
+                                            onError = { fetchError ->
+                                                Toast.makeText(
+                                                    context,
+                                                    "Napaka: $fetchError",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        )
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "Napaka: $error",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 }
                                 
                                 if (submissionId != null) {
@@ -384,6 +453,7 @@ fun AvailabilityScreen(
                                         request = request,
                                         onSuccess = { id ->
                                             submissionId = id
+                                            hasExistingSubmission = true
                                             onSuccess()
                                         },
                                         onError = onError

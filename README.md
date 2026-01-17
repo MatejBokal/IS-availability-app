@@ -68,6 +68,20 @@ Aplikacija je javno dostopna na naslednjih naslovih:
 
 > **Opomba:** API je integriran v isto ASP.NET Core aplikacijo in je dostopen preko prefixa `/api/`. Swagger UI omogoča interaktivno testiranje in pregled vseh API endpointov.
 
+### Testni dostopni podatki
+
+Za testiranje aplikacije lahko uporabite naslednje testne uporabniške račune:
+
+**Administrator:**
+- **Email:** `matej@bokal.si`
+- **Geslo:** `Matej123.`
+
+**Delavec (Worker):**
+- **Email:** `gabrijel@avsec.si`
+- **Geslo:** `Gabrijel123.`
+
+> **Opomba:** Administrator ima dostop do vseh funkcionalnosti sistema, vključno z upravljanjem mesečnih obdobij, nastavitev in pregledom razpoložljivosti vseh delavcev. Delavec lahko oddaja in pregleduje le svojo razpoložljivost.
+
 ---
 
 ## 📸 Zaslonske slike grafičnega vmesnika
@@ -103,7 +117,7 @@ Aplikacija je javno dostopna na naslednjih naslovih:
 - **Razvoj REST API storitve** — implementacija API endpointov z JWT avtentikacijo
 - **Azure deployment** — aplikacija in baza
 - **Izdelava README.md**
-- **Razširitve in optimizacije Android aplikacije** — dopolnitve in izboljšave
+- **Razširitve in optimizacije Android aplikacije** — dopolnitve in izboljšave, dokončal vso funkcionalnost
 
 
 

@@ -25,6 +25,7 @@ data class CreateAvailabilityRequest(
 
 data class AvailabilitySubmissionDto(
     @SerializedName("monthKey") val monthKey: String,
+    @SerializedName("submissionId") val submissionId: Int? = null,
     @SerializedName("submittedAtUtc") val submittedAtUtc: String?,
     @SerializedName("entries") val entries: List<AvailabilityEntryDto>
 )

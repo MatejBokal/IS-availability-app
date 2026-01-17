@@ -10,7 +10,7 @@ namespace AvailabilityCollector.Controllers.Api;
 
 [ApiController]
 [Route("api/availability/my")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Worker,Admin")]
+[Authorize(AuthenticationSchemes = $"{JwtBearerDefaults.AuthenticationScheme},Identity.Application", Roles = "Worker,Admin")]
 public class AvailabilityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -60,7 +60,7 @@ public class AvailabilityController : ControllerBase
     }
 
     public record AvailabilityEntryDto(string Date, string Type, string? StartTime, string? EndTime);
-    public record AvailabilitySubmissionDto(string MonthKey, DateTime? SubmittedAtUtc, List<AvailabilityEntryDto> Entries);
+    public record AvailabilitySubmissionDto(string MonthKey, int? SubmissionId, DateTime? SubmittedAtUtc, List<AvailabilityEntryDto> Entries);
     public record CreateAvailabilityRequest(string MonthKey, List<AvailabilityEntryDto> Entries);
 
     [HttpGet]
@@ -103,18 +103,34 @@ public class AvailabilityController : ControllerBase
 
         return Ok(new AvailabilitySubmissionDto(
             monthKey,
+            submission.Id,
             submission.SubmittedAtUtc,
             entries
         ));
     }
 
     [HttpPost("submissions")]
-    public async Task<ActionResult> CreateAvailabilitySubmission(CreateAvailabilityRequest request)
+    public async Task<ActionResult> CreateAvailabilitySubmission([FromBody] CreateAvailabilityRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null)
         {
             return Unauthorized();
+        }
+
+        if (request == null)
+        {
+            return BadRequest(new { error = "Request body is required" });
+        }
+
+        if (string.IsNullOrEmpty(request.MonthKey))
+        {
+            return BadRequest(new { error = "MonthKey is required" });
+        }
+
+        if (request.Entries == null || request.Entries.Count == 0)
+        {
+            return BadRequest(new { error = "At least one entry is required" });
         }
 
         // Validate and get month
@@ -152,7 +168,7 @@ public class AvailabilityController : ControllerBase
         }
 
         // If lock after initial submission is enabled and submission already exists, prevent creating new one
-        if (lockAfterSubmission && existingSubmission != null && existingSubmission.SubmittedAtUtc != default)
+        if (lockAfterSubmission && existingSubmission != null)
         {
             return BadRequest(new { error = "Submission already exists and editing is not allowed after initial submission. This setting is enabled by the administrator." });
         }
@@ -191,20 +207,54 @@ public class AvailabilityController : ControllerBase
             submission.Entries.Add(entry);
         }
 
-        _context.AvailabilitySubmissions.Add(submission);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.AvailabilitySubmissions.Add(submission);
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            // Check if it's a unique constraint violation
+            if (ex.InnerException?.Message.Contains("IX_AvailabilitySubmissions_UserId_AvailabilityMonthId") == true ||
+                ex.InnerException?.Message.Contains("UNIQUE KEY constraint") == true)
+            {
+                return Conflict(new { error = "Submission already exists for this month. Use PUT to update." });
+            }
+            
+            // Log the full exception for debugging
+            return StatusCode(500, new { error = "Failed to save submission. Please try again.", details = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "An error occurred while saving the submission.", details = ex.Message });
+        }
 
         return CreatedAtAction(nameof(GetMyAvailability), new { monthKey = request.MonthKey }, 
             new { message = "Submission created successfully", submissionId = submission.Id });
     }
 
     [HttpPut("submissions/{id}")]
-    public async Task<ActionResult> UpdateAvailabilitySubmission(int id, CreateAvailabilityRequest request)
+    public async Task<ActionResult> UpdateAvailabilitySubmission(int id, [FromBody] CreateAvailabilityRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null)
         {
             return Unauthorized();
+        }
+
+        if (request == null)
+        {
+            return BadRequest(new { error = "Request body is required" });
+        }
+
+        if (string.IsNullOrEmpty(request.MonthKey))
+        {
+            return BadRequest(new { error = "MonthKey is required" });
+        }
+
+        if (request.Entries == null || request.Entries.Count == 0)
+        {
+            return BadRequest(new { error = "At least one entry is required" });
         }
 
         // Find submission and verify ownership
@@ -245,10 +295,14 @@ public class AvailabilityController : ControllerBase
             lockAfterSubmission = lockSetting;
         }
 
-        // If lock after initial submission is enabled and submission already exists, prevent editing
-        if (lockAfterSubmission && submission.SubmittedAtUtc != default)
+        // If lock after initial submission is enabled, prevent editing (submission exists, so it was already submitted)
+        if (lockAfterSubmission)
         {
-            return BadRequest(new { error = "Editing is not allowed after initial submission. This setting is enabled by the administrator." });
+            return BadRequest(new { 
+                error = "Editing is not allowed after initial submission. This setting is enabled by the administrator.",
+                settingValue = lockAfterSubmissionSetting?.Value ?? "null",
+                settingExists = lockAfterSubmissionSetting != null
+            });
         }
 
         // Validate entries
@@ -278,7 +332,18 @@ public class AvailabilityController : ControllerBase
         submission.SubmittedAtUtc = DateTime.UtcNow;
         submission.Status = "Submitted";
 
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            return StatusCode(500, new { error = "Failed to update submission. Please try again.", details = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "An error occurred while updating the submission.", details = ex.Message });
+        }
 
         return Ok(new { message = "Submission updated successfully", submissionId = submission.Id });
     }

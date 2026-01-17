@@ -66,6 +66,20 @@ public class SettingsController : ControllerBase
         });
     }
 
+    [HttpGet("lock-after-initial-submission")]
+    public async Task<ActionResult<bool>> GetLockAfterInitialSubmission()
+    {
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "LockAfterInitialSubmission");
+
+        if (setting != null && bool.TryParse(setting.Value, out var enabled))
+        {
+            return Ok(enabled);
+        }
+
+        return Ok(false); // Default: false
+    }
+
     [HttpGet("notifications")]
     public async Task<ActionResult<bool>> GetNotificationPreference()
     {

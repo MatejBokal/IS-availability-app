@@ -661,6 +661,38 @@ class VolleyClient(context: Context) {
     }
     
     /**
+     * Get lock after initial submission setting
+     */
+    fun getLockAfterInitialSubmission(
+        onSuccess: (Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "${BASE_URL}settings/lock-after-initial-submission"
+        
+        val request = AuthenticatedStringRequest(
+            Request.Method.GET,
+            url,
+            getAuthHeaders(),
+            { response ->
+                try {
+                    // Backend returns just a boolean as string (e.g., "true" or "false")
+                    val enabled = response.trim().toBoolean()
+                    onSuccess(enabled)
+                } catch (e: Exception) {
+                    // Default to false if parsing fails
+                    onSuccess(false)
+                }
+            },
+            { error ->
+                // Default to false if endpoint doesn't exist or error occurs
+                onSuccess(false)
+            }
+        )
+        
+        requestQueue.add(request)
+    }
+    
+    /**
      * Get allowed time window setting
      */
     fun getAllowedTimeWindow(

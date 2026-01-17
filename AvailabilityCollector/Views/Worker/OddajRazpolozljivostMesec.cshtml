@@ -488,18 +488,73 @@
             const method = submissionId > 0 ? 'PUT' : 'POST';
             
             try {
-                const response = await fetch(url, {
+                let response = await fetch(url, {
                     method: method,
                     headers: {
                         'Content-Type': 'application/json'
                     },
+                    credentials: 'include', // Include cookies for authentication
                     body: JSON.stringify({
                         monthKey: monthKey,
                         entries: entries
                     })
                 });
                 
-                const result = await response.json();
+                // Handle non-JSON responses
+                let result;
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    result = await response.json();
+                } else {
+                    const text = await response.text();
+                    result = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+                }
+                
+                // If Conflict (409) and we used POST, try PUT instead (submission exists)
+                if (response.status === 409 && method === 'POST' && submissionId === 0) {
+                    // Fetch the existing submission to get its ID
+                    try {
+                        const getResponse = await fetch(`/api/availability/my?monthKey=${encodeURIComponent(monthKey)}`, {
+                            credentials: 'include'
+                        });
+                        if (getResponse.ok) {
+                            const submissionData = await getResponse.json();
+                            if (submissionData.submissionId) {
+                                // Retry with PUT using the fetched submission ID
+                                const putUrl = `/api/availability/my/submissions/${submissionData.submissionId}`;
+                                const putResponse = await fetch(putUrl, {
+                                    method: 'PUT',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    credentials: 'include',
+                                    body: JSON.stringify({
+                                        monthKey: monthKey,
+                                        entries: entries
+                                    })
+                                });
+                                
+                                const putResult = await putResponse.json();
+                                if (putResponse.ok) {
+                                    showToast('Razpoložljivost je bila uspešno shranjena.', 'success');
+                                    setTimeout(() => {
+                                        window.location.href = '@Url.Action("OddajRazpolozljivost", "Worker")';
+                                    }, 1500);
+                                } else {
+                                    showToast('Napaka: ' + (putResult.error || 'Neznana napaka'), 'error');
+                                    console.error('Update error:', putResult);
+                                }
+                                return;
+                            }
+                        }
+                    } catch (fetchError) {
+                        console.error('Error fetching submission:', fetchError);
+                    }
+                    // Fallback: reload the page
+                    showToast('Posodabljanje obstoječe oddaje...', 'info');
+                    window.location.reload();
+                    return;
+                }
                 
                 if (response.ok) {
                     showToast('Razpoložljivost je bila uspešno shranjena.', 'success');
@@ -508,10 +563,12 @@
                     }, 1500);
                 } else {
                     showToast('Napaka: ' + (result.error || 'Neznana napaka'), 'error');
+                    console.error('Submission error:', result);
                 }
             } catch (error) {
                 console.error('Error:', error);
-                showToast('Napaka pri shranjevanju razpoložljivosti.', 'error');
+                const errorMessage = error.message || 'Neznana napaka';
+                showToast('Napaka pri shranjevanju razpoložljivosti: ' + errorMessage, 'error');
             }
         }
 
