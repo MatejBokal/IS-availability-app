@@ -5,7 +5,8 @@ namespace AvailabilityCollector.Data;
 
 public static class SeedData
 {
-    public static async Task EnsureSeededAsync(IServiceProvider services)
+    /// <param name="isDevelopment">When true, resets passwords for seeded users to known dev values so you can always log in locally.</param>
+    public static async Task EnsureSeededAsync(IServiceProvider services, bool isDevelopment = false)
     {
         using var scope = services.CreateScope();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -18,17 +19,29 @@ public static class SeedData
                 await roleManager.CreateAsync(new IdentityRole(r));
         }
 
-        // Create an admin user if none exists
-        var adminEmail = "admin@demo.si";
-        var adminPass = "Admin123!ChangeMe";
+        // Demo users (simple local/dev accounts)
+        await EnsureUserAsync(userManager, "admin@demo.si", "Admin123!", "Admin", isDevelopment);
+        await EnsureUserAsync(userManager, "worker@demo.si", "Worker123!", "Worker", isDevelopment);
 
-        var admin = await userManager.FindByEmailAsync(adminEmail);
-        if (admin == null)
+        // Same test users as README / production (so local DB has "all the users" with known passwords)
+        await EnsureUserAsync(userManager, "matej@bokal.si", "Matej123.", "Admin", isDevelopment);
+        await EnsureUserAsync(userManager, "gabrijel@avsec.si", "Gabrijel123.", "Worker", isDevelopment);
+    }
+
+    private static async Task EnsureUserAsync(UserManager<ApplicationUser> userManager, string email, string password, string role, bool resetPasswordInDev)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        if (user == null)
         {
-            admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, EmailConfirmed = true };
-            var res = await userManager.CreateAsync(admin, adminPass);
+            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+            var res = await userManager.CreateAsync(user, password);
             if (res.Succeeded)
-                await userManager.AddToRoleAsync(admin, "Admin");
+                await userManager.AddToRoleAsync(user, role);
+        }
+        else if (resetPasswordInDev)
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            await userManager.ResetPasswordAsync(user, token, password);
         }
     }
 }

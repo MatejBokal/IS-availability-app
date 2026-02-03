@@ -5,10 +5,9 @@ Univerza v Ljubljani, Fakulteta za računalništvo in informatiko
 
 ---
 
-## 👥 Avtorji
+## 👥 Avtor
 
 - **Matej Bokal** — 63200465  
-- **Jožef Gabrijel Avsec** — 63220010
 
 ---
 
@@ -81,6 +80,73 @@ Za testiranje aplikacije lahko uporabite naslednje testne uporabniške račune:
 - **Geslo:** `Gabrijel123.`
 
 > **Opomba:** Administrator ima dostop do vseh funkcionalnosti sistema, vključno z upravljanjem mesečnih obdobij, nastavitev in pregledom razpoložljivosti vseh delavcev. Delavec lahko oddaja in pregleduje le svojo razpoložljivost.
+
+---
+
+## 🐳 Lokalni zagon (za razvijalce)
+
+Če želite aplikacijo zagnati lokalno (npr. po klonu repozitorija), uporabite naslednje korake. Repozitorij vsebuje vse potrebno: `docker-compose.yml` za bazo, `appsettings.Development.json` z lokalno povezavo in seed podatke z znanimi testnimi računi.
+
+### Zahteve
+
+- **Docker Desktop** (ali Docker + Docker Compose) — za SQL Server
+- **.NET 10 SDK** — [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
+- **Entity Framework Core tools** (enkratna namestitev):  
+  `dotnet tool install --global dotnet-ef`
+
+### Koraki
+
+1. **Klonirajte repozitorij** (če še niste):
+   ```bash
+   git clone <url-repozitorija>
+   cd availability-app
+   ```
+
+2. **Zaženite SQL Server v Dockerju** (v korenu repozitorija):
+   ```bash
+   docker compose up -d
+   ```
+   Počakajte nekaj sekund, da se vsebnik zagnan.
+
+3. **Ustvarite bazo in shemo** (v mapi `AvailabilityCollector`):
+   ```bash
+   cd AvailabilityCollector
+   ```
+   **Windows (PowerShell):**
+   ```powershell
+   $env:ASPNETCORE_ENVIRONMENT = "Development"
+   dotnet ef database update
+   ```
+   **macOS/Linux:**
+   ```bash
+   export ASPNETCORE_ENVIRONMENT=Development
+   dotnet ef database update
+   ```
+   Če `dotnet ef database update` sporoči napako NU1301 (npr. 127.0.0.1:9), poizkusite izklopiti proxy za to sejo:  
+   `$env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""` (PowerShell) ali `unset HTTP_PROXY HTTPS_PROXY` (bash), nato znova zaženite ukaz.
+
+4. **Zaženite spletno aplikacijo:**
+   ```bash
+   dotnet run
+   ```
+   Aplikacija se zaganja v okolju **Development** in uporablja lokalno bazo (Docker SQL Server).
+
+5. **Odprite v brskalniku:**
+   - Spletna aplikacija: **http://localhost:5180**
+   - Swagger API: **http://localhost:5180/swagger**
+
+### Prijava (lokalni računi)
+
+Ob prvem zagonu aplikacija v okolju Development v bazo doda (ali posodobi gesla) naslednje račune. Z njimi se lahko prijavite tako lokalno kot na produkciji:
+
+| Vloga        | Email             | Geslo        |
+|-------------|-------------------|--------------|
+| Administrator | `matej@bokal.si`  | `Matej123.`  |
+| Delavec     | `gabrijel@avsec.si`| `Gabrijel123.` |
+| Administrator (demo) | `admin@demo.si`  | `Admin123!`  |
+| Delavec (demo) | `worker@demo.si` | `Worker123!` |
+
+V Development se ob vsakem zagonu gesla teh uporabnikov nastavijo na vrednosti v tabeli, tako da jih lahko vedno uporabite za lokalno testiranje.
 
 ---
 

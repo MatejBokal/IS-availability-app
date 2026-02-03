@@ -157,7 +157,8 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger"; // Swagger UI will be available at /swagger
 });
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
@@ -179,7 +180,7 @@ app.MapControllerRoute(
     .WithStaticAssets();
 app.MapRazorPages();
 
-// Seed roles and admin user
-await SeedData.EnsureSeededAsync(app.Services);
+// Seed roles and users (in Development, resets seeded users' passwords to known dev values)
+await SeedData.EnsureSeededAsync(app.Services, app.Environment.IsDevelopment());
 
 app.Run();

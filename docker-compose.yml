@@ -1,0 +1,18 @@
+# Local development: SQL Server in Docker (per README: "Docker lokalno")
+# Run: docker compose up -d
+# Then: dotnet run (from AvailabilityCollector) or apply migrations: dotnet ef database update
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: availabilitycollector-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "VerySecret!"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+
+volumes:
+  sqlserver-data:
